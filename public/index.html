@@ -189,6 +189,22 @@ table.sb tr.me td{ background:rgba(46,242,255,.08); }
 #notice{ position:fixed; z-index:45; left:50%; bottom:calc(40px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); padding:10px 18px; background:var(--panel-2); box-shadow:inset 2px 0 0 var(--amber); font-size:15px; max-width:calc(100vw - 32px); }
 #clickNote{ left:50%; top:58%; transform:translateX(-50%); font-family:var(--body); font-size:15px; padding:8px 16px; background:var(--panel); color:var(--text); }
 .kf.sys{ color:var(--muted); font-size:13px; }
+#zone{ left:50%; top:calc(96px + env(safe-area-inset-top,0px)); transform:translateX(-50%); font-family:var(--body); font-size:14px; padding:4px 14px; background:var(--panel); box-shadow:inset 0 -2px 0 var(--zc,#9fb3c8); white-space:nowrap; }
+#boostTag{ left:28px; bottom:calc(150px + env(safe-area-inset-bottom,0px)); font-family:var(--body); font-size:14px; color:var(--amber); padding:3px 12px; background:var(--panel); box-shadow:inset 2px 0 0 var(--amber); }
+body.touch #boostTag{ left:12px; top:calc(132px + env(safe-area-inset-top,0px)); bottom:auto; }
+#chat{ left:50%; bottom:calc(150px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); display:grid; grid-template-columns:repeat(3,auto); gap:6px; pointer-events:auto; }
+#chat button{ border:0; background:var(--panel-2); color:var(--text); box-shadow:inset 0 0 0 1px var(--line-strong); padding:8px 14px; font-size:14px; cursor:pointer; }
+#chat button b{ font-family:var(--display); color:var(--cyan); margin-right:6px; }
+.kf.say{ color:var(--text); }
+.hl{ display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin:18px 0 0; }
+.hl div{ padding:10px 12px; background:rgba(0,0,0,.28); box-shadow:inset 2px 0 0 var(--cyan); }
+.hl small{ display:block; font-size:12px; color:var(--muted); }
+.hl b{ display:block; font-size:16px; margin-top:2px; }
+.hl span{ font-family:var(--display); color:var(--cyan); font-size:13px; }
+.tabs{ display:flex; gap:0; margin:0 0 12px; border-bottom:1px solid var(--line); }
+.tabs button{ background:none; border:0; padding:8px 16px; color:var(--muted); cursor:pointer; font-size:15px; box-shadow:inset 0 -2px 0 transparent; }
+.tabs button[aria-pressed=true]{ color:var(--text); box-shadow:inset 0 -2px 0 var(--cyan); }
+.navbtn .live{ color:var(--cyan); }
 /* ---------- Touch controls ---------- */
 #touch{ position:fixed; inset:0; z-index:12; display:none; touch-action:none; }
 body.touch.ingame #touch{ display:block; }
@@ -207,6 +223,7 @@ body.touch.ingame{ touch-action:none; }
 .tb.sm{ border-radius:0; width:auto; height:auto; padding:7px 12px; font-size:13px; top:calc(10px + env(safe-area-inset-top,0px)); }
 #t-menu{ left:calc(12px + env(safe-area-inset-left,0px)); }
 #t-board{ left:calc(76px + env(safe-area-inset-left,0px)); }
+#t-chat{ left:calc(140px + env(safe-area-inset-left,0px)); }
 body.touch #shieldP{ top:calc(52px + env(safe-area-inset-top,0px)); bottom:auto; left:12px; transform:scale(.62); transform-origin:top left; }
 body.touch #weapP{ top:calc(52px + env(safe-area-inset-top,0px)); bottom:auto; right:12px; transform:scale(.62); transform-origin:top right; }
 body.touch #feed{ top:calc(172px + env(safe-area-inset-top,0px)); right:12px; transform:scale(.72); }
@@ -238,20 +255,23 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
   <div id="stats"></div>
   <div id="shieldP"><div class="lbl">護盾</div><div class="num" id="shNum">100</div><div class="segs" id="segs"></div></div>
   <div id="weapP"><div id="wName">脈衝步槍</div><div class="ammo"><strong id="ammo">24</strong><span id="mag">/ 24</span></div><div id="rbar"><i id="rbarI"></i></div><div id="wHint"></div>
-    <div class="slots"><span data-s="0">1 脈衝步槍</span><span data-s="1">2 電弧散射器</span></div></div>
+    <div class="slots"><span data-s="0">1 脈衝</span><span data-s="1">2 電弧</span><span data-s="2">3 軌道</span></div></div>
+  <div id="zone" class="hidden"></div>
+  <div id="boostTag" class="hidden"></div>
+  <div id="chat" class="hidden"></div>
   <div id="cmsg"></div>
   <div id="protect" class="hidden">重生保護中，射擊即解除</div>
   <div id="deadP" class="hidden"><div class="by">被 <b id="killer"></b> 淘汰</div><div class="rs"><span id="rsT">3.0</span> 秒後重生</div></div>
   <div id="clickNote" class="hidden">點擊畫面以繼續</div>
   <div id="lockNote" class="hidden">瀏覽器未允許鎖定游標，視角改以移動滑鼠控制。在新分頁開啟可獲得完整操作。</div>
-  <div id="board" class="hidden"><h3><span id="bd-title">自由競技</span><small id="bd-sub"></small></h3><table class="sb"><thead><tr><th>代理人</th><th>淘汰</th><th>被淘汰</th><th>延遲</th></tr></thead><tbody id="bd-body"></tbody></table></div>
+  <div id="board" class="hidden"><h3><span id="bd-title">自由競技</span><small id="bd-sub"></small></h3><table class="sb"><thead><tr><th>代理人</th><th>分數</th><th>淘汰</th><th>被淘汰</th><th>延遲</th></tr></thead><tbody id="bd-body"></tbody></table></div>
 </div>
 
 <div id="touch" aria-hidden="true">
   <div id="tzone-l"></div><div id="tzone-r"></div><div id="stick"><i></i></div>
   <button class="tb" id="t-fire">射擊</button><button class="tb" id="t-jump">跳躍</button>
   <button class="tb" id="t-reload">換彈</button><button class="tb" id="t-swap">切換</button>
-  <button class="tb sm" id="t-menu">選單</button><button class="tb sm" id="t-board">計分</button>
+  <button class="tb sm" id="t-menu">選單</button><button class="tb sm" id="t-board">計分</button><button class="tb sm" id="t-chat">訊息</button>
 </div>
 <div id="rotate">請將手機轉為橫向<br>以獲得完整的對戰畫面</div>
 <div id="qbanner" class="hidden" role="status"><span id="qb-text"></span><button class="btn" id="qb-join">加入</button><button class="btn ghost" id="qb-skip">放棄</button></div>
@@ -261,8 +281,10 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
   <h1 class="title" id="title"></h1>
   <p class="subtitle">霓虹競技場 <small>地圖：雨巷中繼站</small></p>
   <nav class="mainnav">
-    <button class="navbtn primary" data-go="online">連線對戰<small>最多 8 人</small></button>
+    <button class="navbtn primary" data-go="online">連線對戰<small id="on-count">最多 8 人</small></button>
     <button class="navbtn" data-go="setup">單人練習<small>對戰機器人</small></button>
+    <button class="navbtn" data-go="lb">排行榜</button>
+    <button class="navbtn" id="btn-invite">邀請朋友<small>分享網址</small></button>
     <button class="navbtn" data-go="settings">設定</button>
     <button class="navbtn" data-go="help">操作說明</button>
   </nav>
@@ -274,12 +296,14 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
 <section id="setup" class="screen overlay hidden" aria-label="練習設定">
   <div class="panel">
     <h2>練習對戰</h2>
-    <p class="lead">在雨巷中繼站與機器人進行自由競技。淘汰其他代理人得 1 分，先達分數上限或時間結束即結算。</p>
+    <p class="lead">在雨巷中繼站與機器人對戰。自由競技靠淘汰得分；佔領中繼站要獨自站在中央塔頂，每秒得 1 分。</p>
     <div class="row"><label for="in-name">暱稱</label><input type="text" id="in-name" maxlength="16" autocomplete="off" spellcheck="false"><span></span></div>
     <div class="row"><label for="in-bots">機器人數量</label><input type="range" id="in-bots" min="1" max="7" step="1"><output id="o-bots"></output></div>
     <div class="row"><label>難度</label><div class="seg" id="seg-diff"><button data-v="easy">簡單</button><button data-v="normal">普通</button><button data-v="hard">困難</button></div><span></span></div>
     <div class="row"><label>局長</label><div class="seg" id="seg-time"><button data-v="3">3 分</button><button data-v="5">5 分</button><button data-v="8">8 分</button><button data-v="10">10 分</button></div><span></span></div>
-    <div class="row"><label>分數上限</label><div class="seg" id="seg-score"><button data-v="10">10</button><button data-v="20">20</button><button data-v="30">30</button></div><span></span></div>
+    <div class="row"><label>模式</label><div class="seg" id="seg-mode"><button data-v="ffa">自由競技</button><button data-v="koth">佔領中繼站</button></div><span></span></div>
+    <div class="row" id="row-score"><label>分數上限</label><div class="seg" id="seg-score"><button data-v="10">10</button><button data-v="20">20</button><button data-v="30">30</button></div><span></span></div>
+    <div class="row" id="row-kscore"><label>佔領分數</label><div class="seg" id="seg-kscore"><button data-v="30">30</button><button data-v="60">60</button><button data-v="90">90</button></div><span></span></div>
     <div class="actions"><button class="btn ghost" data-back>返回</button><button class="btn" id="btn-start">進入競技場</button></div>
   </div>
 </section>
@@ -304,6 +328,17 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
   </div>
 </section>
 
+<section id="lb" class="screen overlay hidden" aria-label="排行榜">
+  <div class="panel">
+    <h2>排行榜</h2>
+    <p class="lead">只記錄連線對戰的真人玩家，以暱稱識別。今日以台灣時間計算。</p>
+    <div class="tabs" id="lb-tabs"><button data-v="today" aria-pressed="true">今日</button><button data-v="all" aria-pressed="false">總排行</button></div>
+    <table class="sb"><thead id="lb-head"></thead><tbody id="lb-body"></tbody></table>
+    <p class="note" id="lb-note"></p>
+    <div class="actions"><button class="btn" data-back>返回</button></div>
+  </div>
+</section>
+
 <section id="settings" class="screen overlay hidden" aria-label="設定">
   <div class="panel">
     <h2>設定</h2>
@@ -316,6 +351,9 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
     <div class="row"><label for="s-tsens">觸控轉向靈敏度</label><input type="range" id="s-tsens" min="0.4" max="3" step="0.05"><output></output></div>
     <div class="row"><label for="s-fov">垂直視野角</label><input type="range" id="s-fov" min="70" max="110" step="1"><output></output></div>
     <div class="row"><label>反轉 Y 軸</label><button class="tgl" id="s-invert" aria-label="反轉 Y 軸"></button><span></span></div>
+    <div class="group-t">觸控輔助（只在手機與平板生效）</div>
+    <div class="row"><label>瞄準輔助</label><button class="tgl" id="s-assist" aria-label="瞄準輔助"></button><span></span></div>
+    <div class="row"><label>自動射擊</label><button class="tgl" id="s-autofire" aria-label="自動射擊"></button><span></span></div>
     <div class="group-t">畫面</div>
     <div class="row"><label>畫質</label><div class="seg" id="s-quality"><button data-v="low">低</button><button data-v="medium">中</button><button data-v="high">高</button></div><span></span></div>
     <div class="row"><label for="s-uiscale">介面比例</label><input type="range" id="s-uiscale" min="0.8" max="1.25" step="0.05"><output></output></div>
@@ -336,13 +374,14 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
       <tr><td>射擊</td><td>滑鼠左鍵</td></tr>
       <tr><td>跳躍</td><td><kbd>Space</kbd></td></tr>
       <tr><td>換彈</td><td><kbd>R</kbd></td></tr>
-      <tr><td>切換武器</td><td><kbd>1</kbd><kbd>2</kbd> 或滾輪</td></tr>
+      <tr><td>切換武器</td><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 或滾輪</td></tr>
+      <tr><td>快捷訊息</td><td><kbd>T</kbd> 再按數字</td></tr>
       <tr><td>計分板</td><td>按住 <kbd>Tab</kbd></td></tr>
       <tr><td>選單／釋放游標</td><td><kbd>Esc</kbd></td></tr>
       <tr><td>接受連線邀請</td><td><kbd>Enter</kbd></td></tr>
     </tbody></table>
     <p class="note">手機與平板：左半邊拖曳移動，右半邊拖曳轉動視角。按住「射擊」時也可以拖曳瞄準，其他按鍵在右下角。</p>
-    <p class="note">脈衝步槍：單發 20，每秒 6 發，彈匣 24。電弧散射器：固定 6 束各 8，每秒 1 發，彈匣 6，適合近距離。護盾 100，被淘汰後 3 秒重生，並有 1.5 秒重生保護。</p>
+    <p class="note">脈衝步槍：單發 20，每秒 6 發，中距離主力。電弧散射器：固定 6 束各 8，近距離爆發。軌道狙擊槍：單發 70，彈匣 4，適合遠距離。地圖上的青色晶體回復 50 護盾，琥珀色箭頭給 6 秒加速。</p>
     <div class="actions"><button class="btn" data-back>了解</button></div>
   </div>
 </section>
@@ -354,6 +393,7 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
     <div style="display:grid;gap:10px">
       <button class="btn" id="btn-resume">繼續對戰</button>
       <button class="btn ghost" data-go="settings">設定</button>
+      <button class="btn ghost" id="btn-invite2">邀請朋友</button>
       <button class="btn ghost" id="btn-quit">離開對戰</button>
     </div>
   </div>
@@ -363,18 +403,19 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
   <div class="panel">
     <h2 id="res-title">結算</h2>
     <p class="lead" id="res-sub"></p>
-    <table class="sb"><thead><tr><th>名次</th><th>代理人</th><th>淘汰</th><th>被淘汰</th></tr></thead><tbody id="res-body"></tbody></table>
+    <table class="sb"><thead><tr><th>名次</th><th>代理人</th><th>分數</th><th>淘汰</th><th>被淘汰</th></tr></thead><tbody id="res-body"></tbody></table>
+    <div class="hl" id="res-hl"></div>
     <div class="actions"><button class="btn ghost" id="btn-menu">返回主選單</button><button class="btn" id="btn-again">再來一局</button></div>
   </div>
 </section>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="vendor/three/three.min.js"></script>
+<script src="vendor/three/examples/shaders/CopyShader.js"></script>
+<script src="vendor/three/examples/shaders/LuminosityHighPassShader.js"></script>
+<script src="vendor/three/examples/shaders/FXAAShader.js"></script>
+<script src="vendor/three/examples/postprocessing/EffectComposer.js"></script>
+<script src="vendor/three/examples/postprocessing/RenderPass.js"></script>
+<script src="vendor/three/examples/postprocessing/ShaderPass.js"></script>
+<script src="vendor/three/examples/postprocessing/UnrealBloomPass.js"></script>
 <script type="module" src="game.js"></script>
 </body>
 </html>

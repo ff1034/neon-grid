@@ -1,16 +1,30 @@
 // NEON GRID shared rules: used by the browser client and by the Cloudflare Durable Object server.
 // Keep this file free of DOM / THREE dependencies so both sides simulate identically.
-export const VERSION = 2;
+export const VERSION = 3;
 export const MAX_PLAYERS = 8;
 export const MAX_QUEUE = 64;
 export const TICK = 1 / 60;
 export const SEND_EVERY = 3;            // client batches 3 ticks per message => 20 messages/s
-export const BITS = { FIRE: 1, JUMP: 2, RELOAD: 4, SW0: 8, SW1: 16 };
-export const P = { speed: 6, grav: 22, jumpV: Math.sqrt(2 * 22 * 1.05), radius: .35, height: 1.8, eye: 1.62, step: .55, shield: 100, respawn: 3, protect: 1.5 };
-export const MATCH = { time: 300, score: 20, countdown: 10, results: 9, minPlayers: 2, offerSec: 15 };
+export const BITS = { FIRE: 1, JUMP: 2, RELOAD: 4, SW0: 8, SW1: 16, SW2: 32 };
+export const P = { boostMul: 1.35, speed: 6, grav: 22, jumpV: Math.sqrt(2 * 22 * 1.05), radius: .35, height: 1.8, eye: 1.62, step: .55, shield: 100, respawn: 3, protect: 1.5 };
+export const MATCH = { time: 300, countdown: 10, results: 10, minPlayers: 2, offerSec: 15, fillTo: 4 };
+export const MODES = {
+  ffa: { id: 'ffa', name: '自由競技', score: 20, desc: '淘汰對手得 1 分' },
+  koth: { id: 'koth', name: '佔領中繼站', score: 60, desc: '獨自站在中繼塔頂，每秒得 1 分' } };
+export const KOTH_ZONE = { x0: -3.15, x1: 3.15, z0: -3.15, z1: 3.15, y0: 3.3, y1: 6 };
+export const canFire = state => state === 'playing' || state === 'waiting';
+export function inZone(p) { const q = p.pos; return p.alive && q.x > KOTH_ZONE.x0 && q.x < KOTH_ZONE.x1 && q.z > KOTH_ZONE.z0 && q.z < KOTH_ZONE.z1 && q.y >= KOTH_ZONE.y0 && q.y < KOTH_ZONE.y1; }
+export const PICKUP_TYPES = { shield: { amount: 50, respawn: 20 }, boost: { time: 6, respawn: 25 } };
+export const PICKUPS = [
+  { type: 'shield', x: -12.5, y: 0, z: 6 }, { type: 'shield', x: 12.5, y: 0, z: -6 }, { type: 'shield', x: 0, y: 0, z: 21.5 }, { type: 'shield', x: 0, y: 0, z: -21.5 },
+  { type: 'boost', x: 8, y: 3.5, z: 20.5 }, { type: 'boost', x: -8, y: 3.5, z: -20.5 }];
+export const QUICK_CHAT = ['好槍法！', '再來一場？', '等我一下', '跟我來', '小心後面', '哈哈哈'];
+export const BOT_NAMES = ['霓影', 'K-ROW', '雨刃', 'VEX-9', '幽頻', 'NULLA', '赤弦', '鈦鴉'];
+export const DIFF = { easy: { react: .75, err: .085, turn: 3.6, fireAng: .09, track: 1.8 }, normal: { react: .45, err: .05, turn: 5.2, fireAng: .06, track: 1.2 }, hard: { react: .25, err: .026, turn: 8, fireAng: .04, track: .8 } };
 export const WEAPONS = [
   { id: 'pulse', name: '脈衝步槍', short: '脈衝', dmg: 20, rate: 6, mag: 24, reload: 1.6, range: 90, pellets: 0, spreadDeg: 0, color: 0x2ef2ff },
-  { id: 'arc', name: '電弧散射器', short: '電弧', dmg: 8, rate: 1, mag: 6, reload: 2.0, range: 22, pellets: 6, spreadDeg: 2.6, color: 0xff2fb4 }];
+  { id: 'arc', name: '電弧散射器', short: '電弧', dmg: 8, rate: 1, mag: 6, reload: 2.0, range: 22, pellets: 6, spreadDeg: 2.6, color: 0xff2fb4 },
+  { id: 'rail', name: '軌道狙擊槍', short: '軌道', dmg: 70, rate: .8, mag: 4, reload: 2.4, range: 120, pellets: 0, spreadDeg: 0, color: 0xffb43a }];
 export const PATTERN = []; for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; PATTERN.push([Math.cos(a), Math.sin(a)]); }
 export const PLAYER_COLORS = [0x2ef2ff, 0xff3fb8, 0xffb43a, 0x8cff5a, 0xa77bff, 0xff6a3d, 0x9fd8ff, 0xff4a5a];
 export const SPAWNS = [[-13, 0, -6], [13, 0, 6], [-22, 0, -15.6], [22, 0, 15.6], [0, 3.5, 20], [0, 3.5, -20], [-12, 3.5, 20], [12, 3.5, -20], [0, 0, 10], [0, 0, -10], [-8, 0, 21], [8, 0, -21]];
@@ -58,7 +72,8 @@ export function buildColliders(map) {
 export function newPlayer(id, name, color) {
   return { id, name, color, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, onGround: false, airT: 0,
     shield: P.shield, alive: false, respawnT: 0, protect: 0, score: 0, deaths: 0, wi: 0, ws: WEAPONS.map(w => ({ ammo: w.mag, reload: 0 })),
-    cd: 0, switchT: 0, ack: 0, landed: false, bumped: false };
+    cd: 0, switchT: 0, ack: 0, landed: false, bumped: false, boostT: 0,
+    kills: 0, shots: 0, hits: 0, streak: 0, best: 0, hold: 0, hist: [] };
 }
 
 /* ---------- Collision & physics ---------- */
@@ -84,7 +99,7 @@ function moveY(a, C, d) {
   }
 }
 export function physics(a, C, wx, wz, jump, dt) {
-  const acc = a.onGround ? 55 : 11, tx = wx * P.speed, tz = wz * P.speed;
+  const sp = P.speed * (a.boostT > 0 ? P.boostMul : 1), acc = a.onGround ? 55 : 11, tx = wx * sp, tz = wz * sp;
   a.vel.x += clamp(tx - a.vel.x, -acc * dt, acc * dt); a.vel.z += clamp(tz - a.vel.z, -acc * dt, acc * dt);
   if (jump && a.onGround) { a.vel.y = P.jumpV; a.onGround = false; }
   a.vel.y -= P.grav * dt; if (a.vel.y < -40) a.vel.y = -40;
@@ -119,9 +134,9 @@ export function eye(a, out = {}) { out.x = a.pos.x; out.y = a.pos.y + P.eye; out
 
 /* ---------- Weapons ---------- */
 export function startReload(a) { const w = WEAPONS[a.wi], st = a.ws[a.wi]; if (st.reload > 0 || st.ammo >= w.mag || !a.alive) return false; st.reload = w.reload; return true; }
-export function switchWeapon(a, i) { if (i === a.wi || !a.alive || (i !== 0 && i !== 1)) return false; a.ws[a.wi].reload = 0; a.wi = i; a.switchT = .35; return true; }
+export function switchWeapon(a, i) { if (i === a.wi || !a.alive || !(i >= 0 && i < WEAPONS.length)) return false; a.ws[a.wi].reload = 0; a.wi = i; a.switchT = .35; return true; }
 export function weaponTimers(a, dt) {
-  a.cd -= dt; a.switchT -= dt; if (a.protect > 0) a.protect -= dt;
+  a.cd -= dt; a.switchT -= dt; if (a.protect > 0) a.protect -= dt; if (a.boostT > 0) a.boostT -= dt;
   const st = a.ws[a.wi]; if (st.reload > 0) { st.reload -= dt; if (st.reload <= 0) { st.reload = 0; st.ammo = WEAPONS[a.wi].mag; } }
 }
 export function tryFire(a) {
@@ -161,13 +176,13 @@ export function sanitizeInput(i) {
   if (!i || typeof i !== 'object') return null;
   const s = +i.s, mx = +i.mx, mz = +i.mz, y = +i.y, p = +i.p, b = i.b | 0;
   if (![s, mx, mz, y, p].every(Number.isFinite)) return null;
-  return { s: Math.floor(s), mx: clamp(mx, -1, 1), mz: clamp(mz, -1, 1), y: angWrap(y), p: clamp(p, -1.52, 1.52), b: b & 31 };
+  return { s: Math.floor(s), mx: clamp(mx, -1, 1), mz: clamp(mz, -1, 1), y: angWrap(y), p: clamp(p, -1.52, 1.52), b: b & 63 };
 }
 export function stepPlayer(a, inp, dt, C, allowFire = true) {
   a.yaw = inp.y; a.pitch = inp.p;
   weaponTimers(a, dt);
   if (!a.alive) { a.vel.x = a.vel.z = 0; physics(a, C, 0, 0, false, dt); return false; }
-  if (inp.b & BITS.SW0) switchWeapon(a, 0); else if (inp.b & BITS.SW1) switchWeapon(a, 1);
+  if (inp.b & BITS.SW0) switchWeapon(a, 0); else if (inp.b & BITS.SW1) switchWeapon(a, 1); else if (inp.b & BITS.SW2) switchWeapon(a, 2);
   if (inp.b & BITS.RELOAD) startReload(a);
   let mx = inp.mx, mz = inp.mz; const L = Math.hypot(mx, mz); if (L > 1) { mx /= L; mz /= L; }
   const sy = Math.sin(a.yaw), cy = Math.cos(a.yaw);
@@ -193,6 +208,15 @@ export function placeAt(a, i, spawnState, now) {
   const sp = SPAWNS[i]; spawnState[i].uses++; spawnState[i].last = now;
   a.pos.x = sp[0]; a.pos.y = sp[1] + .02; a.pos.z = sp[2]; a.vel.x = a.vel.y = a.vel.z = 0;
   a.yaw = Math.atan2(sp[0], sp[2]); a.pitch = 0; a.shield = P.shield; a.ws.forEach((s, k) => { s.ammo = WEAPONS[k].mag; s.reload = 0; });
-  a.wi = 0; a.cd = 0; a.switchT = 0; a.protect = P.protect; a.alive = true; a.onGround = false; a.airT = 0;
+  a.wi = 0; a.cd = 0; a.switchT = 0; a.protect = P.protect; a.alive = true; a.onGround = false; a.airT = 0; a.boostT = 0; a.hist = [];
 }
 export function rankPlayers(list) { return list.slice().sort((x, y) => y.score - x.score || x.deaths - y.deaths); }
+
+/* ---------- Snapshot packing (server -> client), one array per player ---------- */
+export const IDX = { id: 0, x: 1, y: 2, z: 3, vx: 4, vy: 5, vz: 6, yaw: 7, pitch: 8, flags: 9, shield: 10, wi: 11, protect: 12, respawnT: 13, score: 14, deaths: 15,
+  rtt: 16, ack: 17, cd: 18, switchT: 19, ammo0: 20, airT: 26, boostT: 27, kills: 28 };
+export function packPlayer(p, rtt) {
+  const r = r3; return [p.id, r(p.pos.x), r(p.pos.y), r(p.pos.z), r(p.vel.x), r(p.vel.y), r(p.vel.z), r4(p.yaw), r4(p.pitch),
+    (p.onGround ? 1 : 0) | (p.alive ? 2 : 0) | (p.bot ? 4 : 0), Math.ceil(p.shield), p.wi, r(Math.max(0, p.protect)), r(Math.max(0, p.respawnT)), p.score, p.deaths, rtt | 0, p.ack,
+    r(p.cd), r(p.switchT), p.ws[0].ammo, r(p.ws[0].reload), p.ws[1].ammo, r(p.ws[1].reload), p.ws[2].ammo, r(p.ws[2].reload), r(p.airT), r(Math.max(0, p.boostT)), p.kills];
+}

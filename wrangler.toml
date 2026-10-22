@@ -1,0 +1,19 @@
+name = "neon-grid"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+# 遊戲網頁（public 資料夾）由 Workers 靜態資源提供，不計入請求額度
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# 唯一的對戰房間：一個 Durable Object 負責權威判定
+[[durable_objects.bindings]]
+name = "ARENA"
+class_name = "Arena"
+
+# 免費方案只能使用 SQLite 型 Durable Object
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Arena"]
