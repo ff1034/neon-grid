@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NEON GRID：霓虹競技場</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#050913; --deep:#0a1324; --panel:rgba(7,13,26,.84); --panel-2:rgba(14,24,44,.9);
+  --line:rgba(120,196,255,.24); --line-strong:rgba(120,210,255,.5);
+  --cyan:#2ef2ff; --magenta:#ff2fb4; --amber:#ffb43a; --danger:#ff4d6d;
+  --text:#dfeaf7; --muted:#8a9cb6; --ui:1;
+  --display:"Chakra Petch","Noto Sans TC",system-ui,sans-serif;
+  --body:"Noto Sans TC","Chakra Petch",system-ui,sans-serif;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --ink:#050913; --deep:#0a1324; --text:#dfeaf7; --muted:#8a9cb6; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --ink:#050913; --deep:#0a1324; --text:#dfeaf7; --muted:#8a9cb6; color-scheme:dark; }
+:root{ box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+*,*::before,*::after{ box-sizing:inherit; }
+html{ scroll-padding-top:env(safe-area-inset-top,0px); height:100%; }
+body{ height:100%; margin:0; background:var(--ink); color:var(--text); font-family:var(--body); overflow:hidden; -webkit-font-smoothing:antialiased; user-select:none; }
+#game{ position:fixed; inset:0; }
+#game canvas{ display:block; width:100%; height:100%; }
+body.playing #game canvas{ cursor:none; }
+.hidden{ display:none !important; }
+button,input,select{ font:inherit; color:inherit; }
+:focus-visible{ outline:2px solid var(--cyan); outline-offset:3px; }
+
+/* ---------- Boot ---------- */
+#boot{ position:fixed; inset:0; z-index:50; display:grid; place-items:center; background:var(--ink); transition:opacity .8s ease; }
+#boot.done{ opacity:0; pointer-events:none; }
+#boot .bar{ width:min(320px,70vw); height:2px; background:rgba(120,196,255,.15); margin-top:18px; overflow:hidden; }
+#boot .bar i{ display:block; height:100%; width:0; background:var(--cyan); box-shadow:0 0 12px var(--cyan); transition:width .3s; }
+#boot .t{ font-family:var(--display); letter-spacing:.32em; color:var(--muted); font-size:13px; text-align:center; }
+
+/* ---------- Screens ---------- */
+.screen{ position:fixed; inset:0; z-index:20; }
+#menu{ display:grid; grid-template-columns:minmax(0,1fr); align-content:center; padding:0 clamp(28px,7vw,120px);
+  background:linear-gradient(90deg,rgba(5,9,19,.92) 0%,rgba(5,9,19,.62) 34%,rgba(5,9,19,0) 62%); }
+.title{ font-family:var(--display); font-weight:700; font-size:clamp(56px,9.5vw,148px); line-height:.86; letter-spacing:.02em; margin:0;
+  color:transparent; -webkit-text-stroke:2px var(--cyan); text-shadow:0 0 18px rgba(46,242,255,.55),0 0 46px rgba(46,242,255,.25); }
+.title span{ display:inline-block; opacity:0; animation:ignite 1.2s cubic-bezier(.2,.7,.2,1) forwards; }
+@keyframes ignite{ 0%{opacity:0; filter:blur(6px);} 60%{opacity:1; filter:blur(0);} 100%{opacity:1;} }
+.subtitle{ margin:20px 0 0; display:flex; gap:18px; align-items:baseline; font-size:clamp(17px,1.6vw,22px); font-weight:500; color:var(--text); }
+.subtitle small{ font-size:.72em; color:var(--muted); font-weight:400; }
+nav.mainnav{ margin-top:clamp(28px,6vh,64px); display:grid; gap:4px; width:min(300px,80vw); }
+.navbtn{ position:relative; display:flex; justify-content:space-between; align-items:center; background:none; border:0; padding:12px 16px 12px 22px; text-align:left; cursor:pointer;
+  font-size:19px; font-weight:500; color:var(--text); transition:color .15s, background .15s; }
+.navbtn::before{ content:""; position:absolute; left:0; top:50%; width:3px; height:0; background:var(--cyan); box-shadow:0 0 10px var(--cyan); transform:translateY(-50%); transition:height .18s; }
+.navbtn:hover,.navbtn:focus-visible{ background:linear-gradient(90deg,rgba(46,242,255,.13),rgba(46,242,255,0)); color:#fff; outline:none; }
+.navbtn:hover::before,.navbtn:focus-visible::before{ height:70%; }
+.navbtn small{ font-family:var(--display); font-size:12px; color:var(--muted); letter-spacing:.06em; }
+.navbtn.primary{ font-size:22px; font-weight:700; color:var(--cyan); }
+.menufoot{ position:fixed; left:clamp(28px,7vw,120px); bottom:calc(22px + env(safe-area-inset-bottom,0px)); font-size:12.5px; color:var(--muted); font-family:var(--display); letter-spacing:.04em; }
+.mapcard{ position:fixed; right:clamp(20px,4vw,56px); bottom:calc(24px + env(safe-area-inset-bottom,0px)); text-align:right; }
+.mapcard b{ display:block; font-size:22px; font-weight:700; }
+.mapcard span{ font-family:var(--display); color:var(--muted); font-size:13px; }
+#touchNote{ margin-top:22px; max-width:360px; color:var(--amber); font-size:14px; line-height:1.6; }
+
+/* ---------- Panels ---------- */
+.overlay{ display:grid; place-items:center; background:rgba(4,8,17,.72); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); padding:20px; overflow:auto; }
+.panel{ position:relative; width:min(620px,100%); max-height:calc(100vh - 40px); overflow:auto; padding:30px 34px 28px; background:var(--panel-2);
+  clip-path:polygon(0 0,calc(100% - 22px) 0,100% 22px,100% 100%,22px 100%,0 calc(100% - 22px));
+  box-shadow:inset 0 0 0 1px var(--line); }
+.panel::after{ content:""; position:absolute; top:0; right:0; width:31px; height:2px; background:var(--cyan); transform-origin:right top; transform:rotate(45deg) translate(0,0); }
+.panel h2{ margin:0 0 6px; font-size:26px; font-weight:700; }
+.panel .lead{ margin:0 0 22px; color:var(--muted); line-height:1.65; font-size:15px; max-width:56ch; }
+.row{ display:grid; grid-template-columns:140px 1fr auto; gap:14px; align-items:center; padding:11px 0; border-top:1px solid rgba(120,196,255,.1); }
+.row:first-of-type{ border-top:0; }
+.row label{ font-size:15px; }
+.row output{ font-family:var(--display); font-variant-numeric:tabular-nums; min-width:52px; text-align:right; color:var(--cyan); }
+.group-t{ margin:22px 0 4px; font-size:13px; color:var(--muted); letter-spacing:.08em; }
+input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:22px; background:transparent; cursor:pointer; }
+input[type=range]::-webkit-slider-runnable-track{ height:3px; background:linear-gradient(90deg,var(--cyan) var(--p,50%),rgba(120,196,255,.2) var(--p,50%)); }
+input[type=range]::-moz-range-track{ height:3px; background:rgba(120,196,255,.2); }
+input[type=range]::-moz-range-progress{ height:3px; background:var(--cyan); }
+input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px; margin-top:-5.5px; background:var(--ink); border:2px solid var(--cyan); transform:rotate(45deg); }
+input[type=range]::-moz-range-thumb{ width:11px; height:11px; background:var(--ink); border:2px solid var(--cyan); border-radius:0; transform:rotate(45deg); }
+input[type=text]{ width:100%; background:rgba(0,0,0,.35); border:1px solid var(--line); padding:9px 12px; outline:none; }
+input[type=text]:focus{ border-color:var(--cyan); }
+.seg{ display:flex; gap:0; border:1px solid var(--line); width:max-content; }
+.seg button{ background:none; border:0; padding:7px 14px; cursor:pointer; color:var(--muted); font-size:14px; }
+.seg button[aria-pressed=true]{ background:var(--cyan); color:var(--ink); font-weight:700; }
+.tgl{ position:relative; width:44px; height:22px; border:1px solid var(--line-strong); background:rgba(0,0,0,.3); cursor:pointer; padding:0; }
+.tgl::after{ content:""; position:absolute; top:3px; left:3px; width:14px; height:14px; background:var(--muted); transition:left .15s, background .15s; }
+.tgl[aria-pressed=true]{ border-color:var(--cyan); }
+.tgl[aria-pressed=true]::after{ left:25px; background:var(--cyan); box-shadow:0 0 8px var(--cyan); }
+.actions{ display:flex; gap:12px; justify-content:flex-end; margin-top:26px; flex-wrap:wrap; }
+.btn{ border:0; cursor:pointer; padding:12px 24px; font-size:16px; font-weight:700; background:var(--cyan); color:var(--ink);
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px)); transition:filter .15s; }
+.btn:hover{ filter:brightness(1.12); }
+.btn.ghost{ background:transparent; color:var(--text); box-shadow:inset 0 0 0 1px var(--line-strong); }
+.btn.ghost:hover{ color:#fff; box-shadow:inset 0 0 0 1px var(--cyan); }
+.keys{ width:100%; border-collapse:collapse; font-size:15px; }
+.keys td{ padding:9px 0; border-top:1px solid rgba(120,196,255,.1); }
+.keys td:last-child{ text-align:right; }
+kbd{ display:inline-block; min-width:26px; padding:3px 8px; margin-left:4px; text-align:center; font-family:var(--display); font-size:13px; border:1px solid var(--line-strong); background:rgba(0,0,0,.35); }
+.note{ font-size:14px; color:var(--muted); line-height:1.7; margin:14px 0 0; }
+.lanbox{ margin:4px 0 0; padding:16px 18px; background:rgba(0,0,0,.3); border-left:2px solid var(--amber); line-height:1.75; font-size:15px; }
+.lanbox code{ font-family:var(--display); color:var(--amber); }
+
+/* ---------- HUD ---------- */
+#hud{ position:fixed; inset:0; z-index:10; pointer-events:none; font-family:var(--display); }
+#hud > *{ position:absolute; }
+#xhair{ left:50%; top:50%; width:0; height:0; }
+#xhair i{ position:absolute; background:#fff; box-shadow:0 0 3px rgba(0,0,0,.9); }
+#xhair .t,#xhair .b{ width:2px; height:9px; left:-1px; }
+#xhair .l,#xhair .r{ height:2px; width:9px; top:-1px; }
+#xhair .dot{ position:absolute; width:2px; height:2px; left:-1px; top:-1px; background:var(--cyan); }
+#xring{ position:absolute; left:0; top:0; overflow:visible; }
+#hitm{ left:50%; top:50%; width:28px; height:28px; margin:-14px 0 0 -14px; opacity:0; }
+#hitm::before,#hitm::after{ content:""; position:absolute; left:50%; top:0; width:2px; height:100%; margin-left:-1px; background:linear-gradient(#fff 0 32%,transparent 32% 68%,#fff 68%); }
+#hitm::before{ transform:rotate(45deg); } #hitm::after{ transform:rotate(-45deg); }
+#hitm.kill::before,#hitm.kill::after{ background:linear-gradient(var(--magenta) 0 36%,transparent 36% 64%,var(--magenta) 64%); filter:drop-shadow(0 0 4px var(--magenta)); }
+#dmgdirs{ left:50%; top:50%; width:0; height:0; }
+.dd{ position:absolute; left:-70px; top:-170px; width:140px; height:30px; transform-origin:70px 170px;
+  background:radial-gradient(ellipse at 50% 100%,rgba(255,77,109,.85),rgba(255,77,109,0) 70%); clip-path:polygon(8% 100%,50% 0,92% 100%,50% 70%); }
+#topbar{ top:calc(14px + env(safe-area-inset-top,0px)); left:50%; transform:translateX(-50%) scale(var(--ui)); transform-origin:top center; display:grid; grid-template-columns:120px auto 120px; align-items:center; gap:0; }
+#timer{ font-size:30px; font-weight:600; padding:4px 22px; font-variant-numeric:tabular-nums; text-align:center; background:var(--panel);
+  clip-path:polygon(12px 0,calc(100% - 12px) 0,100% 100%,0 100%); }
+#timer.low{ color:var(--amber); }
+.tb-side{ display:flex; align-items:center; gap:10px; padding:6px 14px; background:rgba(7,13,26,.6); height:100%; }
+#tb-you{ justify-content:flex-end; box-shadow:inset 0 -2px 0 var(--cyan); }
+#tb-lead{ box-shadow:inset 0 -2px 0 var(--magenta); }
+.tb-side span{ font-family:var(--body); font-size:13px; color:var(--muted); max-width:70px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.tb-side strong{ font-size:24px; font-variant-numeric:tabular-nums; }
+#tb-limit{ grid-column:1 / -1; text-align:center; font-family:var(--body); font-size:12px; color:var(--muted); margin-top:6px; }
+#feed{ top:calc(18px + env(safe-area-inset-top,0px)); right:22px; display:grid; gap:5px; justify-items:end; transform:scale(var(--ui)); transform-origin:top right; }
+.kf{ display:flex; gap:9px; align-items:center; padding:5px 12px; background:var(--panel); font-family:var(--body); font-size:14px; animation:kfIn .25s ease-out; }
+.kf .w{ font-family:var(--display); font-size:11px; padding:1px 6px; border:1px solid var(--line-strong); color:var(--muted); }
+.kf.me{ box-shadow:inset 2px 0 0 var(--cyan); }
+@keyframes kfIn{ from{ transform:translateX(16px); opacity:0; } }
+#stats{ top:calc(18px + env(safe-area-inset-top,0px)); left:22px; font-size:12px; color:var(--muted); line-height:1.6; font-variant-numeric:tabular-nums; }
+#stats b{ color:var(--text); font-weight:500; }
+#shieldP{ left:28px; bottom:calc(26px + env(safe-area-inset-bottom,0px)); transform:scale(var(--ui)); transform-origin:bottom left; padding:12px 18px 14px; background:var(--panel); min-width:230px;
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%); }
+#shieldP .lbl{ font-family:var(--body); font-size:13px; color:var(--muted); }
+#shieldP .num{ font-size:46px; font-weight:600; line-height:1; margin:2px 0 8px; font-variant-numeric:tabular-nums; color:var(--cyan); text-shadow:0 0 14px rgba(46,242,255,.45); }
+#shieldP.low .num{ color:var(--amber); text-shadow:0 0 14px rgba(255,180,58,.45); }
+.segs{ display:grid; grid-template-columns:repeat(10,1fr); gap:3px; }
+.segs i{ height:8px; background:rgba(120,196,255,.16); transform:skewX(-18deg); }
+.segs i.on{ background:var(--cyan); box-shadow:0 0 6px rgba(46,242,255,.6); }
+#shieldP.low .segs i.on{ background:var(--amber); box-shadow:0 0 6px rgba(255,180,58,.6); }
+#weapP{ right:28px; bottom:calc(26px + env(safe-area-inset-bottom,0px)); transform:scale(var(--ui)); transform-origin:bottom right; padding:12px 18px 14px; background:var(--panel); min-width:250px; text-align:right;
+  clip-path:polygon(14px 0,100% 0,100% 100%,0 100%,0 14px); }
+#wName{ font-family:var(--body); font-size:15px; font-weight:700; }
+.ammo{ display:flex; justify-content:flex-end; align-items:baseline; gap:8px; margin:2px 0 6px; }
+.ammo strong{ font-size:46px; font-weight:600; line-height:1; font-variant-numeric:tabular-nums; }
+.ammo strong.low{ color:var(--amber); }
+.ammo span{ font-size:18px; color:var(--muted); }
+#rbar{ height:3px; background:rgba(120,196,255,.16); margin:4px 0 8px; }
+#rbar i{ display:block; height:100%; width:0; background:var(--amber); box-shadow:0 0 6px var(--amber); }
+#wHint{ font-family:var(--body); font-size:13px; color:var(--amber); min-height:18px; }
+.slots{ display:flex; justify-content:flex-end; gap:6px; margin-top:6px; }
+.slots span{ font-family:var(--body); font-size:12px; padding:3px 9px; color:var(--muted); box-shadow:inset 0 0 0 1px rgba(120,196,255,.18); }
+.slots span.on{ color:var(--ink); background:var(--cyan); box-shadow:none; font-weight:700; }
+#cmsg{ left:50%; top:30%; transform:translate(-50%,-50%); font-size:120px; font-weight:700; color:transparent; -webkit-text-stroke:2px var(--cyan); text-shadow:0 0 30px rgba(46,242,255,.5); }
+#cmsg.word{ font-family:var(--body); font-size:54px; -webkit-text-stroke:0; color:#fff; letter-spacing:.06em; }
+#protect{ left:50%; top:calc(50% + 46px); transform:translateX(-50%); font-family:var(--body); font-size:13px; padding:3px 12px; color:var(--cyan); box-shadow:inset 0 0 0 1px rgba(46,242,255,.5); background:rgba(46,242,255,.08); }
+#deadP{ left:50%; top:62%; transform:translateX(-50%); text-align:center; font-family:var(--body); }
+#deadP .by{ font-size:24px; } #deadP .by b{ color:var(--magenta); }
+#deadP .rs{ margin-top:8px; font-size:15px; color:var(--muted); } #deadP .rs span{ font-family:var(--display); color:var(--text); font-variant-numeric:tabular-nums; }
+#board{ left:50%; top:50%; transform:translate(-50%,-50%) scale(var(--ui)); width:min(640px,92vw); padding:22px 26px; background:var(--panel-2); box-shadow:inset 0 0 0 1px var(--line); font-family:var(--body); }
+#board h3{ margin:0 0 12px; font-size:18px; display:flex; justify-content:space-between; }
+#board h3 small{ font-weight:400; color:var(--muted); font-size:13px; }
+table.sb{ width:100%; border-collapse:collapse; font-size:15px; }
+table.sb th{ text-align:right; font-weight:400; color:var(--muted); font-size:12.5px; padding:6px 8px; }
+table.sb th:first-child,table.sb td:first-child{ text-align:left; }
+table.sb td{ padding:8px; text-align:right; border-top:1px solid rgba(120,196,255,.1); font-family:var(--display); font-variant-numeric:tabular-nums; }
+table.sb td:first-child{ font-family:var(--body); }
+table.sb tr.me td{ background:rgba(46,242,255,.08); }
+.chip{ display:inline-block; width:9px; height:9px; margin-right:9px; transform:rotate(45deg); }
+#lockNote{ left:50%; bottom:calc(120px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); font-family:var(--body); font-size:13px; color:var(--amber); background:var(--panel); padding:6px 14px; }
+
+/* ---------- Online / queue ---------- */
+.qpos{ display:flex; align-items:baseline; gap:12px; margin:6px 0 4px; }
+.qpos strong{ font-family:var(--display); font-size:72px; line-height:1; color:var(--cyan); text-shadow:0 0 18px rgba(46,242,255,.45); font-variant-numeric:tabular-nums; }
+.qpos span{ color:var(--muted); font-size:16px; }
+#qbanner{ position:fixed; z-index:40; left:50%; top:calc(64px + env(safe-area-inset-top,0px)); transform:translateX(-50%); display:flex; align-items:center; gap:12px; padding:9px 10px 9px 18px;
+  background:var(--panel-2); box-shadow:inset 0 0 0 1px var(--line-strong); font-size:15px; max-width:calc(100vw - 24px); }
+#qbanner.offer{ box-shadow:inset 0 0 0 2px var(--cyan),0 0 24px rgba(46,242,255,.35); }
+#qbanner .btn{ padding:8px 16px; font-size:14px; }
+#notice{ position:fixed; z-index:45; left:50%; bottom:calc(40px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); padding:10px 18px; background:var(--panel-2); box-shadow:inset 2px 0 0 var(--amber); font-size:15px; max-width:calc(100vw - 32px); }
+#clickNote{ left:50%; top:58%; transform:translateX(-50%); font-family:var(--body); font-size:15px; padding:8px 16px; background:var(--panel); color:var(--text); }
+.kf.sys{ color:var(--muted); font-size:13px; }
+/* ---------- Touch controls ---------- */
+#touch{ position:fixed; inset:0; z-index:12; display:none; touch-action:none; }
+body.touch.ingame #touch{ display:block; }
+body.touch.ingame{ touch-action:none; }
+#tzone-l{ position:absolute; left:0; top:0; bottom:0; width:42%; touch-action:none; }
+#tzone-r{ position:absolute; right:0; top:0; bottom:0; width:58%; touch-action:none; }
+#stick{ position:absolute; width:120px; height:120px; margin:-60px 0 0 -60px; border-radius:50%; border:2px solid rgba(46,242,255,.35); background:rgba(7,13,26,.25); opacity:0; pointer-events:none; transition:opacity .12s; left:110px; top:70%; }
+#stick.on{ opacity:1; }
+#stick i{ position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%; background:rgba(46,242,255,.45); box-shadow:0 0 14px rgba(46,242,255,.5); }
+.tb{ position:absolute; border:0; color:var(--text); background:rgba(7,13,26,.55); box-shadow:inset 0 0 0 1.5px rgba(120,210,255,.45); border-radius:50%; font-family:var(--body); font-size:14px; font-weight:700; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+.tb:active,.tb.down{ background:rgba(46,242,255,.3); }
+#t-fire{ right:calc(26px + env(safe-area-inset-right,0px)); bottom:calc(34px + env(safe-area-inset-bottom,0px)); width:96px; height:96px; font-size:16px; box-shadow:inset 0 0 0 2px var(--magenta); background:rgba(255,47,180,.18); }
+#t-jump{ right:calc(136px + env(safe-area-inset-right,0px)); bottom:calc(28px + env(safe-area-inset-bottom,0px)); width:64px; height:64px; }
+#t-reload{ right:calc(40px + env(safe-area-inset-right,0px)); bottom:calc(146px + env(safe-area-inset-bottom,0px)); width:58px; height:58px; font-size:13px; }
+#t-swap{ right:calc(118px + env(safe-area-inset-right,0px)); bottom:calc(112px + env(safe-area-inset-bottom,0px)); width:58px; height:58px; font-size:13px; }
+.tb.sm{ border-radius:0; width:auto; height:auto; padding:7px 12px; font-size:13px; top:calc(10px + env(safe-area-inset-top,0px)); }
+#t-menu{ left:calc(12px + env(safe-area-inset-left,0px)); }
+#t-board{ left:calc(76px + env(safe-area-inset-left,0px)); }
+body.touch #shieldP{ top:calc(52px + env(safe-area-inset-top,0px)); bottom:auto; left:12px; transform:scale(.62); transform-origin:top left; }
+body.touch #weapP{ top:calc(52px + env(safe-area-inset-top,0px)); bottom:auto; right:12px; transform:scale(.62); transform-origin:top right; }
+body.touch #feed{ top:calc(172px + env(safe-area-inset-top,0px)); right:12px; transform:scale(.72); }
+body.touch #stats{ display:none; }
+body.touch #topbar{ transform:translateX(-50%) scale(.8); }
+#rotate{ position:fixed; inset:0; z-index:60; display:none; place-items:center; background:var(--ink); font-size:20px; text-align:center; padding:24px; line-height:1.7; }
+@media (orientation:portrait){ body.touch.ingame #rotate{ display:grid; } }
+@media (max-width:760px){ #shieldP,#weapP{ --ui:.72; } #topbar{ --ui:.8; } }
+@media (prefers-reduced-motion: reduce){ .title span{ animation:none; opacity:1; } .kf{ animation:none; } }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="boot"><div><div class="t">NEON GRID 載入中</div><div class="bar"><i id="bootbar"></i></div></div></div>
+
+<div id="hud" class="hidden">
+  <div id="xhair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><b class="dot"></b>
+    <svg id="xring" width="1" height="1"><circle id="xringc" cx="0" cy="0" r="40" fill="none" stroke="rgba(255,47,180,.75)" stroke-width="1.5" stroke-dasharray="4 6"/></svg></div>
+  <div id="hitm"></div>
+  <div id="dmgdirs"></div>
+  <div id="topbar">
+    <div class="tb-side" id="tb-you"><span id="you-name">你</span><strong id="sc-you">0</strong></div>
+    <div id="timer">5:00</div>
+    <div class="tb-side" id="tb-lead"><strong id="sc-lead">0</strong><span id="lead-name">領先</span></div>
+    <div id="tb-limit">先達 20 分獲勝</div>
+  </div>
+  <div id="feed"></div>
+  <div id="stats"></div>
+  <div id="shieldP"><div class="lbl">護盾</div><div class="num" id="shNum">100</div><div class="segs" id="segs"></div></div>
+  <div id="weapP"><div id="wName">脈衝步槍</div><div class="ammo"><strong id="ammo">24</strong><span id="mag">/ 24</span></div><div id="rbar"><i id="rbarI"></i></div><div id="wHint"></div>
+    <div class="slots"><span data-s="0">1 脈衝步槍</span><span data-s="1">2 電弧散射器</span></div></div>
+  <div id="cmsg"></div>
+  <div id="protect" class="hidden">重生保護中，射擊即解除</div>
+  <div id="deadP" class="hidden"><div class="by">被 <b id="killer"></b> 淘汰</div><div class="rs"><span id="rsT">3.0</span> 秒後重生</div></div>
+  <div id="clickNote" class="hidden">點擊畫面以繼續</div>
+  <div id="lockNote" class="hidden">瀏覽器未允許鎖定游標，視角改以移動滑鼠控制。在新分頁開啟可獲得完整操作。</div>
+  <div id="board" class="hidden"><h3><span id="bd-title">自由競技</span><small id="bd-sub"></small></h3><table class="sb"><thead><tr><th>代理人</th><th>淘汰</th><th>被淘汰</th><th>延遲</th></tr></thead><tbody id="bd-body"></tbody></table></div>
+</div>
+
+<div id="touch" aria-hidden="true">
+  <div id="tzone-l"></div><div id="tzone-r"></div><div id="stick"><i></i></div>
+  <button class="tb" id="t-fire">射擊</button><button class="tb" id="t-jump">跳躍</button>
+  <button class="tb" id="t-reload">換彈</button><button class="tb" id="t-swap">切換</button>
+  <button class="tb sm" id="t-menu">選單</button><button class="tb sm" id="t-board">計分</button>
+</div>
+<div id="rotate">請將手機轉為橫向<br>以獲得完整的對戰畫面</div>
+<div id="qbanner" class="hidden" role="status"><span id="qb-text"></span><button class="btn" id="qb-join">加入</button><button class="btn ghost" id="qb-skip">放棄</button></div>
+<div id="notice" class="hidden" role="status"></div>
+
+<section id="menu" class="screen hidden" aria-label="主選單">
+  <h1 class="title" id="title"></h1>
+  <p class="subtitle">霓虹競技場 <small>地圖：雨巷中繼站</small></p>
+  <nav class="mainnav">
+    <button class="navbtn primary" data-go="online">連線對戰<small>最多 8 人</small></button>
+    <button class="navbtn" data-go="setup">單人練習<small>對戰機器人</small></button>
+    <button class="navbtn" data-go="settings">設定</button>
+    <button class="navbtn" data-go="help">操作說明</button>
+  </nav>
+  <p id="touchNote" class="hidden">已切換為觸控操作。建議橫向持握，並使用 Wi-Fi 連線。</p>
+  <div class="menufoot" id="menufoot">v2.0 連線版</div>
+  <div class="mapcard"><b>雨巷中繼站</b><span>50 × 50 m，三條路線</span></div>
+</section>
+
+<section id="setup" class="screen overlay hidden" aria-label="練習設定">
+  <div class="panel">
+    <h2>練習對戰</h2>
+    <p class="lead">在雨巷中繼站與機器人進行自由競技。淘汰其他代理人得 1 分，先達分數上限或時間結束即結算。</p>
+    <div class="row"><label for="in-name">暱稱</label><input type="text" id="in-name" maxlength="16" autocomplete="off" spellcheck="false"><span></span></div>
+    <div class="row"><label for="in-bots">機器人數量</label><input type="range" id="in-bots" min="1" max="7" step="1"><output id="o-bots"></output></div>
+    <div class="row"><label>難度</label><div class="seg" id="seg-diff"><button data-v="easy">簡單</button><button data-v="normal">普通</button><button data-v="hard">困難</button></div><span></span></div>
+    <div class="row"><label>局長</label><div class="seg" id="seg-time"><button data-v="3">3 分</button><button data-v="5">5 分</button><button data-v="8">8 分</button><button data-v="10">10 分</button></div><span></span></div>
+    <div class="row"><label>分數上限</label><div class="seg" id="seg-score"><button data-v="10">10</button><button data-v="20">20</button><button data-v="30">30</button></div><span></span></div>
+    <div class="actions"><button class="btn ghost" data-back>返回</button><button class="btn" id="btn-start">進入競技場</button></div>
+  </div>
+</section>
+
+<section id="online" class="screen overlay hidden" aria-label="連線對戰">
+  <div class="panel">
+    <h2>連線對戰</h2>
+    <p class="lead">一次只開一場，最多 8 人自由競技。場上滿了會自動排隊，排隊期間可以先玩單人練習，輪到你時畫面上方會通知。</p>
+    <div class="row"><label for="on-name">暱稱</label><input type="text" id="on-name" maxlength="16" autocomplete="off" spellcheck="false"><span></span></div>
+    <p class="note" id="on-status" role="status"></p>
+    <div class="actions"><button class="btn ghost" data-back>返回</button><button class="btn" id="btn-connect">連線</button></div>
+  </div>
+</section>
+
+<section id="queue" class="screen overlay hidden" aria-label="排隊">
+  <div class="panel">
+    <h2>場上已滿，正在排隊</h2>
+    <p class="lead" id="q-lead">輪到你時畫面上方會通知，有 15 秒可以確認加入。</p>
+    <div class="qpos"><strong id="q-pos">1</strong><span id="q-total"></span></div>
+    <p class="note" id="q-info"></p>
+    <div class="actions"><button class="btn ghost" id="btn-q-leave">離開排隊</button><button class="btn" id="btn-q-solo">先玩單人練習</button></div>
+  </div>
+</section>
+
+<section id="settings" class="screen overlay hidden" aria-label="設定">
+  <div class="panel">
+    <h2>設定</h2>
+    <div class="group-t">聲音</div>
+    <div class="row"><label for="s-music">音樂</label><input type="range" id="s-music" min="0" max="1" step="0.05"><output></output></div>
+    <div class="row"><label for="s-sfx">音效</label><input type="range" id="s-sfx" min="0" max="1" step="0.05"><output></output></div>
+    <div class="row"><label for="s-ui">介面</label><input type="range" id="s-ui" min="0" max="1" step="0.05"><output></output></div>
+    <div class="group-t">操作</div>
+    <div class="row"><label for="s-sens">滑鼠靈敏度</label><input type="range" id="s-sens" min="0.2" max="3" step="0.05"><output></output></div>
+    <div class="row"><label for="s-fov">垂直視野角</label><input type="range" id="s-fov" min="70" max="110" step="1"><output></output></div>
+    <div class="row"><label>反轉 Y 軸</label><button class="tgl" id="s-invert" aria-label="反轉 Y 軸"></button><span></span></div>
+    <div class="group-t">畫面</div>
+    <div class="row"><label>畫質</label><div class="seg" id="s-quality"><button data-v="low">低</button><button data-v="medium">中</button><button data-v="high">高</button></div><span></span></div>
+    <div class="row"><label for="s-uiscale">介面比例</label><input type="range" id="s-uiscale" min="0.8" max="1.25" step="0.05"><output></output></div>
+    <div class="row"><label>Bloom 光暈</label><button class="tgl" id="s-bloom" aria-label="Bloom 光暈"></button><span></span></div>
+    <div class="row"><label>鏡頭晃動</label><button class="tgl" id="s-shake" aria-label="鏡頭晃動"></button><span></span></div>
+    <div class="row"><label>受擊閃光</label><button class="tgl" id="s-flash" aria-label="受擊閃光"></button><span></span></div>
+    <div class="row"><label>顯示 FPS</label><button class="tgl" id="s-stats" aria-label="顯示 FPS"></button><span></span></div>
+    <div class="actions"><button class="btn ghost" id="s-reset">恢復預設</button><button class="btn" data-back>完成</button></div>
+  </div>
+</section>
+
+<section id="help" class="screen overlay hidden" aria-label="操作說明">
+  <div class="panel">
+    <h2>操作說明</h2>
+    <table class="keys"><tbody>
+      <tr><td>移動</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td></tr>
+      <tr><td>視角</td><td>滑鼠</td></tr>
+      <tr><td>射擊</td><td>滑鼠左鍵</td></tr>
+      <tr><td>跳躍</td><td><kbd>Space</kbd></td></tr>
+      <tr><td>換彈</td><td><kbd>R</kbd></td></tr>
+      <tr><td>切換武器</td><td><kbd>1</kbd><kbd>2</kbd> 或滾輪</td></tr>
+      <tr><td>計分板</td><td>按住 <kbd>Tab</kbd></td></tr>
+      <tr><td>選單／釋放游標</td><td><kbd>Esc</kbd></td></tr>
+      <tr><td>接受連線邀請</td><td><kbd>Enter</kbd></td></tr>
+    </tbody></table>
+    <p class="note">手機與平板：左半邊拖曳移動，右半邊拖曳轉動視角。按住「射擊」時也可以拖曳瞄準，其他按鍵在右下角。</p>
+    <p class="note">脈衝步槍：單發 20，每秒 6 發，彈匣 24。電弧散射器：固定 6 束各 8，每秒 1 發，彈匣 6，適合近距離。護盾 100，被淘汰後 3 秒重生，並有 1.5 秒重生保護。</p>
+    <div class="actions"><button class="btn" data-back>了解</button></div>
+  </div>
+</section>
+
+<section id="pause" class="screen overlay hidden" aria-label="暫停">
+  <div class="panel" style="width:min(420px,100%)">
+    <h2>已暫停</h2>
+    <p class="lead" id="pause-lead">練習模式會在選單開啟時暫停。</p>
+    <div style="display:grid;gap:10px">
+      <button class="btn" id="btn-resume">繼續對戰</button>
+      <button class="btn ghost" data-go="settings">設定</button>
+      <button class="btn ghost" id="btn-quit">離開對戰</button>
+    </div>
+  </div>
+</section>
+
+<section id="results" class="screen overlay hidden" aria-label="結算">
+  <div class="panel">
+    <h2 id="res-title">結算</h2>
+    <p class="lead" id="res-sub"></p>
+    <table class="sb"><thead><tr><th>名次</th><th>代理人</th><th>淘汰</th><th>被淘汰</th></tr></thead><tbody id="res-body"></tbody></table>
+    <div class="actions"><button class="btn ghost" id="btn-menu">返回主選單</button><button class="btn" id="btn-again">再來一局</button></div>
+  </div>
+</section>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script type="module" src="game.js"></script>
+</body>
+</html>
