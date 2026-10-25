@@ -279,7 +279,7 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
 
 <section id="menu" class="screen hidden" aria-label="主選單">
   <h1 class="title" id="title"></h1>
-  <p class="subtitle">霓虹競技場 <small>地圖：雨巷中繼站</small></p>
+  <p class="subtitle">霓虹競技場 <small>地圖：雨巷中繼站／地下電網，每兩場輪換</small></p>
   <nav class="mainnav">
     <button class="navbtn primary" data-go="online">連線對戰<small id="on-count">最多 8 人</small></button>
     <button class="navbtn" data-go="setup">單人練習<small>對戰機器人</small></button>
@@ -290,13 +290,13 @@ body.touch #topbar{ transform:translateX(-50%) scale(.8); }
   </nav>
   <p id="touchNote" class="hidden">已切換為觸控操作。建議橫向持握，並使用 Wi-Fi 連線。</p>
   <div class="menufoot" id="menufoot">v2.0 連線版</div>
-  <div class="mapcard"><b>雨巷中繼站</b><span>50 × 50 m，三條路線</span></div>
+  <div class="mapcard"><b>雨巷中繼站・地下電網</b><span>50 × 50 m，兩張地圖輪換</span></div>
 </section>
 
 <section id="setup" class="screen overlay hidden" aria-label="練習設定">
   <div class="panel">
     <h2>練習對戰</h2>
-    <p class="lead">在雨巷中繼站與機器人對戰。自由競技靠淘汰得分；佔領中繼站要獨自站在中央塔頂，每秒得 1 分。</p>
+    <p class="lead">與機器人對戰，每開一局換一張地圖（雨巷中繼站／地下電網）。自由競技靠淘汰得分；佔領中繼站要獨自站在中央塔頂，每秒得 1 分。</p>
     <div class="row"><label for="in-name">暱稱</label><input type="text" id="in-name" maxlength="16" autocomplete="off" spellcheck="false"><span></span></div>
     <div class="row"><label for="in-bots">機器人數量</label><input type="range" id="in-bots" min="1" max="7" step="1"><output id="o-bots"></output></div>
     <div class="row"><label>難度</label><div class="seg" id="seg-diff"><button data-v="easy">簡單</button><button data-v="normal">普通</button><button data-v="hard">困難</button></div><span></span></div>

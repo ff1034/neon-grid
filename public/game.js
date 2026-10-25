@@ -151,7 +151,8 @@ function applyArena(name){if(!arenaAvailable(name))name='city';
   scene.fog.color.set(U?0x140a06:0xc9d9ea);scene.fog.density=U?.012:.0075;
   if(hemi){hemi.color.set(U?0xffb27a:0xd6e8ff);hemi.groundColor.set(U?0x2a120a:0x6e6655);hemi.intensity=U?.6:1.25;}
   if(sun){sun.color.set(U?0xff9a5a:0xfff1dc);sun.intensity=U?1:2.4;}
-  for(const l of lights)l.color.set(U?l.userData.uCol:l.userData.col);}
+  for(const l of lights)l.color.set(U?l.userData.uCol:l.userData.col);
+  showZoneShape(name);}
 let arenaShown='';const arenaColliders={};
 /** Follow the server's arena: swap the look and the solid boxes used for prediction (they differ between arenas). */
 function syncArena(){const a=(net.m&&net.m.arena)||'city';if(a===arenaShown)return;arenaShown=a;
@@ -702,14 +703,23 @@ function buildPickupsFX(){
   }
   const zg=new THREE.Group();zg.position.y=3.52;scene.add(zg);
   const zmat=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
-  const half=3.1;for(const [a,b,c,d] of [[-half,-half,half,-half],[half,-half,half,half],[half,half,-half,half],[-half,half,-half,-half]]){
-    const t=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,Math.hypot(c-a,d-b),6),zmat);t.rotation.z=Math.PI/2;t.position.set((a+c)/2,.03,(b+d)/2);t.rotation.y=Math.atan2(-(d-b),c-a);zg.add(t);}
-  const fmat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.14,depthWrite:false,blending:THREE.AdditiveBlending});
-  const fill=new THREE.Mesh(new THREE.PlaneGeometry(half*2,half*2),fmat);fill.rotation.x=-Math.PI/2;fill.position.y=.02;zg.add(fill);
-  const col=new THREE.Mesh(new THREE.CylinderGeometry(half*1.35,half*1.35,4,4,1,true),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.06,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide}));
-  col.rotation.y=Math.PI/4;col.position.y=2;zg.add(col);
-  zg.visible=false;PK.zone={g:zg,zmat,fmat,col};
+  const fmat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.14,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
+  const cmat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.06,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
+  /** Outline + fill of the relay deck (points in x,z) and a light column above it. */
+  const zoneShape=(pts,colSeg,colRot)=>{const g=new THREE.Group();
+    pts.forEach(([a,b],i)=>{const [c,d]=pts[(i+1)%pts.length];
+      const t=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,Math.hypot(c-a,d-b),6),zmat);t.rotation.z=Math.PI/2;t.position.set((a+c)/2,.03,(b+d)/2);t.rotation.y=Math.atan2(-(d-b),c-a);g.add(t);});
+    const sh=new THREE.Shape(pts.map(([x,z])=>new THREE.Vector2(x,-z)));const fill=new THREE.Mesh(new THREE.ShapeGeometry(sh),fmat);fill.rotation.x=-Math.PI/2;fill.position.y=.02;g.add(fill);
+    const col=new THREE.Mesh(new THREE.CylinderGeometry(3.1*1.35,3.1*1.35,4,colSeg,1,true),cmat);col.rotation.y=colRot;col.position.y=2;g.add(col);
+    zg.add(g);return g;};
+  const half=3.1;
+  // city: square tower top; underground: the reactor's cross-shaped octagon deck (shared.js buildMap('underground'), inset 5 cm)
+  const s=3.15*Math.SQRT1_2-.05,r=3.1,w=1.25,deck=[[r,-w],[r,w],[s,w],[s,s],[w,s],[w,r],[-w,r],[-w,s],[-s,s],[-s,w],[-r,w],[-r,-w],[-s,-w],[-s,-s],[-w,-s],[-w,-r],[w,-r],[w,-s],[s,-s],[s,-w]];
+  const shapes={city:zoneShape([[-half,-half],[half,-half],[half,half],[-half,half]],4,Math.PI/4),underground:zoneShape(deck,8,Math.PI/8)};
+  zg.visible=false;PK.zone={g:zg,zmat,fmat,col:{material:cmat},shapes};
+  showZoneShape(arenaShown||'city');
 }
+function showZoneShape(name){if(!PK.zone)return;for(const [k,g] of Object.entries(PK.zone.shapes))g.visible=k===(PK.zone.shapes[name]?name:'city');}
 function updatePickupsFX(t){
   PK.items.forEach((it,i)=>{const on=!!net.pk[i];it.core.visible=on;it.ring.material=neon(on?(SH.PICKUPS[i].type==='shield'?CYAN:AMB):0x55606e,on?2.4:1);
     if(on){it.core.rotation.y=t*1.6;it.core.position.y=it.baseY+Math.sin(t*2+i)*.1;}});
@@ -811,7 +821,7 @@ function updateHUD(dt){
   // relay zone status
   const zoneOn=m.mode==='koth'&&s==='playing';$('#zone').classList.toggle('hidden',!zoneOn);
   if(zoneOn){const [owner,cont]=net.zone,o=owner?agentById(owner):null;
-    setText('zone',cont?'中繼站爭奪中':owner===net.id?'你正在佔領中繼站':o?`${o.name} 佔領中繼站`:'中繼站無人佔領，前往塔頂');
+    setText('zone',cont?'中繼站爭奪中':owner===net.id?'你正在佔領中繼站':o?`${o.name} 佔領中繼站`:`中繼站無人佔領，前往${net.m.arena==='underground'?'反應爐頂':'塔頂'}`);
     $('#zone').style.setProperty('--zc',cont?'var(--magenta)':o?hexCol(o.color):'#9fb3c8');}
   $('#boostTag').classList.toggle('hidden',!(a.alive&&a.boostT>0));if(a.boostT>0)setText('boostTag',`加速 ${a.boostT.toFixed(1)} 秒`);
   ui.boardT-=dt;if(ui.boardT<=0&&!$('#board').classList.contains('hidden')){ui.boardT=.5;refreshBoard();}
@@ -1104,6 +1114,7 @@ function onSnapshot(m){
     a.buf.push({t:st,x:row[IX.x],y:row[IX.y],z:row[IX.z],yaw:row[IX.yaw],pitch:row[IX.pitch]});if(a.buf.length>12)a.buf.shift();
     a.vel.set(row[IX.vx],row[IX.vy],row[IX.vz]);a.onGround=!!(row[IX.flags]&1);a.alive=al;a.bot=!!(row[IX.flags]&4);a.shield=row[IX.shield];a.wi=row[IX.wi];a.protect=row[IX.protect];
     a.score=row[IX.score];a.deaths=row[IX.deaths];a.rtt=row[IX.rtt];a.kills=row[IX.kills];
+    const rl=al&&row[IX.ammo0+a.wi*2+1]>0;if(rl&&!a.reloading&&a.mesh&&a.mesh.userData.anim)a.mesh.userData.anim.oneShot('Reload');a.reloading=rl;  // agent.glb reload clip
     if(a.buf.length===1)a.pos.set(row[IX.x],row[IX.y],row[IX.z]);}
   if(state!=='online')return;
   const s=m.m.s,el=$('#cmsg');

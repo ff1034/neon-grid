@@ -23,8 +23,19 @@ export function nearestNode(nav, p) {
   nav.nodes.forEach((n, i) => { const d = Math.hypot(n.x - p.x, n.z - p.z) + Math.abs(n.y - p.y) * 6; if (d < bd) { bd = d; best = i; } });
   return best;
 }
-function planPath(nav, from, goal) {
-  const N = nav.nodes.length, s = nearestNode(nav, from);
+/** Nearest node the bot can walk to in a straight line (a node behind a wall is useless as a start: the bot would push into the wall). */
+function startNode(nav, C, p) {
+  const order = nav.nodes.map((n, i) => [Math.hypot(n.x - p.x, n.z - p.z) + Math.abs(n.y - p.y) * 6, i]).sort((a, b) => a[0] - b[0]);
+  for (const [, i] of order.slice(0, 8)) {
+    const n = nav.nodes[i]; if (Math.abs(n.y - p.y) > 1.2) continue;
+    const L = Math.hypot(n.x - p.x, n.z - p.z), steps = Math.ceil(L / .35); let ok = true;
+    for (let k = 1; k <= steps && ok; k++) { const t = k / steps; if (SH.blockedAt(C, p.x + (n.x - p.x) * t, p.y + .3, p.z + (n.z - p.z) * t, .3, 1.4)) ok = false; }
+    if (ok) return i;
+  }
+  return order[0][1];
+}
+function planPath(nav, C, from, goal) {
+  const N = nav.nodes.length, s = startNode(nav, C, from);
   if (goal === s) return [];
   const dist = new Array(N).fill(1e9), prev = new Array(N).fill(-1), done = new Array(N).fill(false); dist[s] = 0;
   for (;;) {
@@ -102,7 +113,7 @@ export function botInput(a, X, dt) {
           const dx = gp.x - a.pos.x, dz = gp.z - a.pos.z, hd = Math.hypot(dx, dz);
           if (hd < .4 || (gp.on === false)) ai.goalPos = null; else { wx = dx / hd; wz = dz / hd; turn(Math.atan2(-dx, -dz), 0, 5); }
         } else {
-        if (!ai.path.length) ai.path = planPath(X.nav, a.pos, chooseGoal(a, X));
+        if (!ai.path.length) ai.path = planPath(X.nav, X.C, a.pos, chooseGoal(a, X));
         if (ai.path.length) {
           const n = X.nav.nodes[ai.path[0]], dx = n.x - a.pos.x, dz = n.z - a.pos.z, hd = Math.hypot(dx, dz);
           // up on the catwalks a 0.75 m early turn walks a bot off a 0.9 m walkway, so be precise there
