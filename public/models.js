@@ -4,7 +4,7 @@
  * 這裡統一轉 180° 讓它們面朝遊戲的 -Z；場景與道具本來就是世界座標，不轉。
  * 材質：TeamColor → 玩家代表色；TeamGlow → 代表色發光；名稱含 Glow/Neon 或有 Emission 的 → 發光（toneMapped:false，會進 bloom）。
  */
-export const MODEL_NAMES = ['agent', 'gun_pulse', 'gun_arc', 'gun_rail', 'arena', 'pickup_shield', 'pickup_boost'];
+export const MODEL_NAMES = ['agent', 'gun_pulse', 'gun_arc', 'gun_rail', 'arena', 'arena_underground', 'pickup_shield', 'pickup_boost'];
 
 export function loadModels(onProgress, timeoutMs = 15000) {
   const out = {};
@@ -53,6 +53,8 @@ export function prepare(root, { team = null, glowK = 2.4, shadow = true } = {}) 
       return m;
     };
     o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
+    // see-through parts (blast glass) must not cast a solid shadow
+    if ((Array.isArray(o.material) ? o.material : [o.material]).some(m => m.transparent)) o.castShadow = false;
   });
   return root;
 }

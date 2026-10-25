@@ -126,16 +126,36 @@ function tube(a,b,r,mat,seg=8){const len=a.distanceTo(b);const geo=new THREE.Cyl
 function nline(x0,y0,z0,x1,y1,z1,hex,r=.035,k){return tube(new V3(x0,y0,z0),new V3(x1,y1,z1),r,neon(hex,k));}
 function plane(w,h,mat,x,y,z,ry=0,rx=0){const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);m.position.set(x,y,z);m.rotation.set(rx,ry,0,'YXZ');scene.add(m);return m;}
 function signMat(t,k=1.5){return new THREE.MeshBasicMaterial({map:t,color:new THREE.Color(k,k,k),toneMapped:false,transparent:true});}
-function addLight(hex,int,dist,x,y,z,core){const l=new THREE.PointLight(hex,int*.7,dist*1.2,2);l.position.set(x,y,z);l.userData.core=!!core;scene.add(l);lights.push(l);return l;}
-
 const CYAN=0x2ef2ff,MAG=0xff2fb4,AMB=0xffb43a;
+function addLight(hex,int,dist,x,y,z,core){const l=new THREE.PointLight(hex,int*.7,dist*1.2,2);l.position.set(x,y,z);l.userData.core=!!core;
+  l.userData.col=hex;l.userData.uCol=hex===AMB?AMB:hex===MAG?0xff3020:0xff7a30;scene.add(l);lights.push(l);return l;}
 
 let MDL={};  // public/models/*.glb, filled in boot(); a missing file stays null and the procedural model is used
-/** arena.glb leaves flat Sign_1… planes on the side buildings; the game paints the neon text (glTF UVs → flipY off). */
-const ARENA_SIGNS={Sign_1:['鷺光電機','HERON ELECTRIC','#2ef2ff'],Sign_2:['霓虹保險','NEON SURETY','#ff2fb4'],
-  Sign_3:['網咖','NET CAFE 24H','#ffb43a'],Sign_4:['雨巷拉麵','RAIN ALLEY RAMEN','#ff2fb4']};
-function arenaSigns(root){for(const [name,[t,sub,col]] of Object.entries(ARENA_SIGNS)){const o=root.getObjectByName(name);if(!o||!o.isMesh)continue;
+/** arena*.glb leave flat Sign_1… planes on the side buildings; the game paints the neon text (glTF UVs → flipY off). */
+const ARENA_SIGNS={
+  city:{Sign_1:['鷺光電機','HERON ELECTRIC','#2ef2ff'],Sign_2:['霓虹保險','NEON SURETY','#ff2fb4'],Sign_3:['網咖','NET CAFE 24H','#ffb43a'],Sign_4:['雨巷拉麵','RAIN ALLEY RAMEN','#ff2fb4']},
+  underground:{Sign_1:['高壓危險','HIGH VOLTAGE','#ff5a1a'],Sign_2:['反應爐 07','REACTOR 07','#ffb43a'],Sign_3:['冷卻迴路','COOLANT LOOP','#ff2a2a'],Sign_4:['電網核心','GRID CORE','#ffb43a']}};
+function arenaSigns(root,table){for(const [name,[t,sub,col]] of Object.entries(table)){const o=root.getObjectByName(name);if(!o||!o.isMesh)continue;
   const tx=signTex(t,sub,col,768,274,140);tx.flipY=false;tx.needsUpdate=true;o.material=signMat(tx,1.3);o.castShadow=false;}}
+
+/* Two looks over the same colliders: 'city' (arena.glb, or the procedural map) and 'underground' (arena_underground.glb).
+ * The server picks one per match (net.m.arena), so everyone sees the same arena; a missing model falls back to city. */
+const ARENA_THEMES={city:{map:null,extras:[]},underground:{map:null,extras:[]}};
+let hemi=null;
+/** Move everything added to the scene since index n0 into one group, so a theme can show/hide it. */
+function collectSince(n0){const g=new THREE.Group();for(const o of scene.children.slice(n0)){scene.remove(o);g.add(o);}scene.add(g);return g;}
+function arenaAvailable(name){return !!(ARENA_THEMES[name]&&ARENA_THEMES[name].map);}
+function applyArena(name){if(!arenaAvailable(name))name='city';
+  for(const [k,t] of Object.entries(ARENA_THEMES)){const on=k===name;if(t.map)t.map.visible=on;t.extras.forEach(g=>g.visible=on);}
+  const U=name==='underground';if(rain)rain.visible=!U;
+  scene.fog.color.set(U?0x140a06:0xc9d9ea);scene.fog.density=U?.012:.0075;
+  if(hemi){hemi.color.set(U?0xffb27a:0xd6e8ff);hemi.groundColor.set(U?0x2a120a:0x6e6655);hemi.intensity=U?.6:1.25;}
+  if(sun){sun.color.set(U?0xff9a5a:0xfff1dc);sun.intensity=U?1:2.4;}
+  for(const l of lights)l.color.set(U?l.userData.uCol:l.userData.col);}
+let arenaShown='';const arenaColliders={};
+/** Follow the server's arena: swap the look and the solid boxes used for prediction (they differ between arenas). */
+function syncArena(){const a=(net.m&&net.m.arena)||'city';if(a===arenaShown)return;arenaShown=a;
+  colliders=arenaColliders[a]||(arenaColliders[a]=SH.buildColliders(SH.buildMap(a)));applyArena(a);}
 
 function buildEnvironment(){
   // reflection environment: stylised neon room for the PMREM
@@ -164,9 +184,14 @@ function buildWorld(){
   // every solid box comes from the shared map, so client and server collide identically;
   // public/models/arena.glb (when present) only replaces how the map looks
   const MAP=SH.buildMap();colliders=SH.buildColliders(MAP);
-  const arena=MDL.arena&&MDL.arena.scene;
-  if(arena){scene.add(prepare(arena));arenaSigns(arena);}
-  else{
+  const arena=MDL.arena&&MDL.arena.scene,under=MDL.arena_underground&&MDL.arena_underground.scene;
+  if(arena){scene.add(prepare(arena));arenaSigns(arena,ARENA_SIGNS.city);ARENA_THEMES.city.map=arena;}
+  if(under){scene.add(prepare(under));arenaSigns(under,ARENA_SIGNS.underground);ARENA_THEMES.underground.map=under;
+    const ceil=under.getObjectByName('Ceiling_Decor');if(ceil)ceil.traverse(o=>{o.castShadow=false;});}  // the ceiling would shade the whole map from the sun
+  if(!under){const n0=scene.children.length;  // no model: plain boxes of the underground layout, so what you see is what you hit
+    for(const m of SH.buildMap('underground'))box(m[0],m[1],m[2],m[3],m[4],m[5],M[m[6]],{uvs:m[7],shadow:true});ARENA_THEMES.underground.map=collectSince(n0);}
+  const nProc=scene.children.length;
+  if(!arena){
   const fl=new THREE.Mesh(new THREE.PlaneGeometry(50,50),M.floor);fl.rotation.x=-Math.PI/2;fl.receiveShadow=true;scene.add(fl);
   for(const m of MAP)box(m[0],m[1],m[2],m[3],m[4],m[5],M[m[6]],{uvs:m[7],shadow:true});
   for(const s of [-1,1]){nline(-24.4,8.9,s*24.4,24.4,8.9,s*24.4,s>0?MAG:CYAN,.05);}
@@ -203,19 +228,24 @@ function buildWorld(){
   // cover
   // dumpster lids glow
   nline(-14.5,1.32,-1,-12.5,1.32,-1,AMB,.02);nline(12.5,1.32,1,14.5,1.32,1,AMB,.02);
+  ARENA_THEMES.city.map=collectSince(nProc);
   }
 
   // under-platform props
+  let nCity=scene.children.length;
   const vt=[vendingTex(61,'#ff2fb4'),vendingTex(62,'#2ef2ff'),vendingTex(63,'#ffb43a')];
   let vi=0;for(const s of [1,-1])for(const x of [-11,-3.5,4,11.5]){plane(1,1.95,signMat(vt[vi++%3],1.1),x+.55,1.05,s>0?23.68:-23.68,s>0?Math.PI:0);}
+  ARENA_THEMES.city.extras.push(collectSince(nCity));
   for(const s of [1,-1]){if(!arena){for(const yy of [2.75,2.95]){tube(new V3(-17,yy,s*(23.9-(yy-2.7)*3)),new V3(17,yy,s*(23.9-(yy-2.7)*3)),.09,M.metal);}
     nline(-16,3.05,s*20,16,3.05,s*20,s>0?MAG:CYAN,.03,1.8);}
     plane(5,1.8,signMat(signTex(s>0?'維修平台':'貨物通道',s>0?'DECK A':'DECK B',s>0?'#ff2fb4':'#2ef2ff',512,184,100),1.2),0,1.9,s>0?24.42:-24.42,s>0?Math.PI:0);}
-  // big billboards on perimeter walls
+  // big billboards on perimeter walls (city only)
+  nCity=scene.children.length;
   plane(9,3.4,signMat(signTex('ODEN NET','訊號永不斷線','#2ef2ff',768,290,150),1.25),-24.4,6.6,15,Math.PI/2);
   plane(9,3.4,signMat(signTex('合成可樂','SYNTH COLA','#ff2fb4',768,290,150),1.25),24.4,6.6,-15,-Math.PI/2);
   plane(7,2.6,signMat(signTex('GRID-07','競技區','#ffb43a',640,240,140),1.2),12,6.4,-24.4,0);
   plane(7,2.6,signMat(signTex('資料即權力','DATA IS POWER','#2ef2ff',640,240,110),1.2),-12,6.4,24.4,Math.PI);
+  ARENA_THEMES.city.extras.push(collectSince(nCity));
   // vents with steam
 
   // hanging cables
@@ -241,12 +271,13 @@ function buildWorld(){
   addLight(MAG,2.2,15,0,2.6,20,true);addLight(CYAN,2.2,15,0,2.6,-20,true);
   addLight(MAG,2,14,-17.5,5,-3,true);addLight(CYAN,2,14,17.5,5,3,true);
   addLight(AMB,1.6,13,-21,4,-19);addLight(CYAN,1.6,13,21,4,19);
-  scene.add(new THREE.HemisphereLight(0xd6e8ff,0x6e6655,1.25));
+  hemi=new THREE.HemisphereLight(0xd6e8ff,0x6e6655,1.25);scene.add(hemi);
   sun=new THREE.DirectionalLight(0xfff1dc,2.4);sun.position.set(-26,32,16);sun.castShadow=true;
   const sc=sun.shadow.camera;sc.left=-34;sc.right=34;sc.top=34;sc.bottom=-34;sc.near=1;sc.far=110;sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.0004;sun.shadow.normalBias=.03;
   scene.add(sun);scene.add(sun.target);
 
-  buildSkyline();
+  nCity=scene.children.length;buildSkyline();ARENA_THEMES.city.extras.push(collectSince(nCity));
+  applyArena('city');
 }
 
 function buildSkyline(){
@@ -749,6 +780,7 @@ function ranked(){return agents.slice().sort((x,y)=>y.score-x.score||x.deaths-y.
 const fmtTime=s=>{s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 const STATE_TXT={waiting:'暖身中',countdown:'即將開戰',playing:'對戰中',results:'結算中'};
 const modeName=()=>(SH.MODES[net.m.mode]||SH.MODES.ffa).name;
+const arenaName=()=>(SH.ARENAS[net.m.arena]||SH.ARENAS.city).name;
 function matchLabel(){const m=net.m;return m.s==='playing'?`${modeName()}，先達 ${m.limit} 分，剩餘 ${fmtTime(m.t)}`:STATE_TXT[m.s]||'';}
 function refreshBoard(){const tb=$('#bd-body');tb.textContent='';
   for(const a of ranked()){const tr=document.createElement('tr');if(a===local)tr.className='me';
@@ -758,7 +790,7 @@ function refreshBoard(){const tb=$('#bd-body');tb.textContent='';
 function updateHUD(dt){
   if(!local)return;const a=local,w=WEAPONS[a.wi],st=a.ws[a.wi],m=net.m,s=m.s;
   setText('timer',s==='waiting'?'暖身':s==='results'?'結算':fmtTime(m.t));$('#timer').classList.toggle('low',s==='playing'&&m.t<30);
-  setText('tb-limit',s==='waiting'?(net.kind==='ws'?'暖身中，等待開戰':'準備中'):s==='countdown'?`${modeName()}，${Math.ceil(m.t)} 秒後開戰`:s==='playing'?`${modeName()}：先達 ${m.limit} 分`:'本場結束');
+  setText('tb-limit',s==='waiting'?(net.kind==='ws'?'暖身中，等待開戰':'準備中'):s==='countdown'?`${modeName()}・${arenaName()}，${Math.ceil(m.t)} 秒後開戰`:s==='playing'?`${modeName()}・${arenaName()}：先達 ${m.limit} 分`:'本場結束');
   setText('sc-you',String(a.score));const lead=ranked().find(x=>x!==a);if(lead){setText('sc-lead',String(lead.score));setText('lead-name',lead.name);}
   const sh=Math.ceil(a.shield);setText('shNum',String(a.alive?sh:0));
   if(ui.prev.seg!==sh+':'+a.alive){ui.prev.seg=sh+':'+a.alive;const segs=$('#segs').children;for(let i=0;i<10;i++)segs[i].classList.toggle('on',a.alive&&sh>i*10);$('#shieldP').classList.toggle('low',sh<=30);}
@@ -865,11 +897,13 @@ let me=null;
 const _old=new V3();
 function netSend(o){if(net.kind==='ws')lobbySend(o);else if(net.core&&net.conn)net.core.message(net.conn,JSON.stringify(o));}
 function lobbySend(o){if(lobby.ws&&lobby.ws.readyState===1)lobby.ws.send(JSON.stringify(o));}
+let soloRuns=0;
 function startLocal(kind){
   net.core=null;net.conn=null;net.vclock=0;net.coreAcc=0;
   const now=()=>net.vclock;
   const opts=kind==='attract'?{attract:true,fillTo:6,idleTimeout:Infinity,queue:false,now}
-    :{maxPlayers:1+S.bots,fillTo:1+S.bots,diff:S.diff,time:S.time*60,scores:{ffa:S.scoreLimit,koth:S.kothLimit},modes:[S.mode],queue:false,idleTimeout:Infinity,oneShot:true,countdown:3.5,now};
+    :{maxPlayers:1+S.bots,fillTo:1+S.bots,diff:S.diff,time:S.time*60,scores:{ffa:S.scoreLimit,koth:S.kothLimit},modes:[S.mode],queue:false,idleTimeout:Infinity,oneShot:true,countdown:3.5,now,
+      arenas:[SH.ARENA_ORDER[soloRuns++%SH.ARENA_ORDER.length]]};  // solo is a single match, so rotate the arena per practice run
   const core=new GameCore(opts),inbox=[];
   net.core=core;net.inbox=inbox;net.kind=kind==='attract'?'attract':'local';
   net.conn=core.connect({send:s=>inbox.push(s),close(){}},kind==='attract');
@@ -950,7 +984,7 @@ function beginMatch(m){
   resetNetState(m);net.prev.copy(me.pos);net.rpos.copy(me.pos);applyRoster(m.roster);
   state='online';paused=false;ui.prev={};ui.dead=0;ui.flash=0;ui.killer=null;VM_VISIBLE=true;VM.lastAmmo=-1;AU.mode='match';dyn.pr=0;
   setIngame(true);setText('you-name',me.name);
-  sysFeed(net.kind==='ws'?'已加入連線對戰':`單人練習：${modeName()}`);goFull();
+  sysFeed(net.kind==='ws'?'已加入連線對戰':`單人練習：${modeName()}・${arenaName()}`);goFull();
   if(!touch.on&&!unlocked){lockPointer();setTimeout(()=>{if(inMatch()&&!isLocked()&&!unlocked&&!paused&&!net.resOpen)$('#clickNote').classList.remove('hidden');},700);}
 }
 function makeInput(){
@@ -1108,7 +1142,7 @@ function adaptRes(dt){if(!touch.on||!inMatch())return;dyn.t+=dt;if(dyn.t<2)retur
   if(ui.fps<40&&dyn.pr>.5){dyn.pr=Math.max(.5,dyn.pr-.1);setPR(dyn.pr);}else if(ui.fps>57&&dyn.pr<q.pr){dyn.pr=Math.min(q.pr,dyn.pr+.05);setPR(dyn.pr);}}
 let last=performance.now(),statusT=0;
 function step(dt){
-  gameTime+=dt;lobbyFrame();
+  gameTime+=dt;lobbyFrame();syncArena();
   if(net.kind==='attract'||(net.kind==='local'&&!paused))tickLocal(dt);
   if(state==='online'){if(net.kind==='local'&&paused){input.mdx=input.mdy=input.tdx=input.tdy=0;}else stepMatch(dt);}
   else if(state==='attract')stepRemotes(dt);

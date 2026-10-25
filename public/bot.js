@@ -1,8 +1,9 @@
 // NEON GRID bot brain. Produces the same input objects a human client sends, so bots obey identical rules.
 import * as SH from './shared.js';
 
-export function buildNav(C) {
-  const nodes = SH.NODES.map(a => ({ x: a[0], y: a[1], z: a[2] })), links = nodes.map(() => []);
+export function buildNav(C, arena = 'city') {
+  const L = SH.LAYOUTS[arena] || SH.LAYOUTS.city;
+  const nodes = L.nodes.map(a => ({ x: a[0], y: a[1], z: a[2] })), links = nodes.map(() => []);
   const walkable = (a, b) => {
     if (Math.abs(a.y - b.y) > .1) return false;
     const L = Math.hypot(a.x - b.x, a.z - b.z), n = Math.ceil(L / .35);
@@ -13,7 +14,7 @@ export function buildNav(C) {
   const link = (i, j) => { const d = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y, nodes[i].z - nodes[j].z); links[i].push([j, d]); links[j].push([i, d]); };
   for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++)
     if (Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z) < 17 && walkable(nodes[i], nodes[j])) link(i, j);
-  for (const [a, b] of SH.STAIR_LINKS) link(a, b);
+  for (const [a, b] of L.stairLinks) link(a, b);
   const zoneNode = nodes.findIndex(n => n.x === 0 && n.z === 0 && n.y > 3);
   return { nodes, links, zoneNode };
 }
@@ -34,7 +35,7 @@ function planPath(nav, from, goal) {
   const path = []; if (dist[goal] < 1e9) { let c = goal; while (c !== -1) { path.unshift(c); c = prev[c]; } } else path.push(s);
   return path;
 }
-export function newBotAI() { return { goalPos: null, target: null, seeT: 0, think: 0, errX: 0, errY: 0, strafe: 1, strafeT: 0, path: [], stuckT: 0, hurtBy: null, hurtT: 0, holdT: 0, wish: false }; }
+export function newBotAI() { return { goalPos: null, target: null, seeT: 0, think: 0, errX: 0, errY: 0, strafe: 1, strafeT: 0, path: [], stuckT: 0, hurtBy: null, hurtT: 0, holdT: 0, wish: false, fought: false }; }
 
 function chooseGoal(a, X) {
   const nav = X.nav; a.ai.goalPos = null;
@@ -69,7 +70,7 @@ export function botInput(a, X, dt) {
   }
   const t = ai.target;
   if (t && t.alive) {
-    ai.seeT += dt;
+    ai.seeT += dt; ai.fought = true;
     const dx = t.pos.x - a.pos.x, dz = t.pos.z - a.pos.z, hd = Math.max(.01, Math.hypot(dx, dz)), dy = (t.pos.y + 1.2) - (a.pos.y + SH.P.eye);
     const dec = Math.exp(-dt / D.track);
     ai.errX = ai.errX * dec + (Math.random() - .5) * D.err * dt * 4; ai.errY = ai.errY * dec + (Math.random() - .5) * D.err * dt * 3;
@@ -87,6 +88,8 @@ export function botInput(a, X, dt) {
     if (a.onGround && Math.random() < dt * .35) b |= SH.BITS.JUMP;
   } else {
     ai.target = null;
+    // strafing during a fight moves the bot off its route: plan again from here instead of walking back to a stale node
+    if (ai.fought) { ai.fought = false; ai.path = []; }
     if (ai.hurtBy && ai.hurtT > 0 && ai.hurtBy.alive) { const dx = ai.hurtBy.pos.x - a.pos.x, dz = ai.hurtBy.pos.z - a.pos.z; turn(Math.atan2(-dx, -dz), 0, D.turn); }
     else {
       const inZone = X.mode === 'koth' && SH.inZone(a);
@@ -102,7 +105,8 @@ export function botInput(a, X, dt) {
         if (!ai.path.length) ai.path = planPath(X.nav, a.pos, chooseGoal(a, X));
         if (ai.path.length) {
           const n = X.nav.nodes[ai.path[0]], dx = n.x - a.pos.x, dz = n.z - a.pos.z, hd = Math.hypot(dx, dz);
-          if (hd < .75 && Math.abs(n.y - a.pos.y) < 1.6) ai.path.shift();
+          // up on the catwalks a 0.75 m early turn walks a bot off a 0.9 m walkway, so be precise there
+          if (hd < (n.y > 3 ? .35 : .75) && Math.abs(n.y - a.pos.y) < 1.6) ai.path.shift();
           else { wx = dx / hd; wz = dz / hd; turn(Math.atan2(-dx, -dz), 0, 5); }
         }
         }

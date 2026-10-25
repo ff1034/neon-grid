@@ -9,14 +9,14 @@ export class GameCore {
   constructor(opts = {}) {
     this.o = Object.assign({
       maxPlayers: SH.MAX_PLAYERS, fillTo: SH.MATCH.fillTo, diff: 'normal', time: SH.MATCH.time,
-      scores: { ffa: SH.MODES.ffa.score, koth: SH.MODES.koth.score }, modes: ['ffa', 'koth'],
+      scores: { ffa: SH.MODES.ffa.score, koth: SH.MODES.koth.score }, modes: ['ffa', 'koth'], arenas: SH.ARENA_ORDER,
       queue: true, idleTimeout: 15, oneShot: false, attract: false, countdown: SH.MATCH.countdown, results: SH.MATCH.results,
       minPlayers: SH.MATCH.minPlayers, now: () => Date.now() / 1000, onMatchEnd: null
     }, opts);
-    this.C = SH.buildColliders(SH.buildMap());
-    this.nav = buildNav(this.C);
+    this.layouts = {};  // arena -> { C, nav }, built on first use
     this.conns = new Map(); this.queue = []; this.bots = []; this.nextId = 1;
-    this.match = { state: 'waiting', t: 0, id: 0, tick: 0, mode: this.o.modes[0] };
+    this.match = { state: 'waiting', t: 0, id: 0, tick: 0, mode: this.o.modes[0], arena: this.o.arenas[0] };
+    this.useArena(this.match.arena);
     this.spawnState = SH.SPAWNS.map(() => ({ uses: 0, last: -99 }));
     this.pickups = SH.PICKUPS.map(p => Object.assign({ on: true, at: 0 }, p));
     this.zone = { owner: 0, contested: 0, acc: 0 };
@@ -42,7 +42,7 @@ export class GameCore {
   humans() { return [...this.conns.values()].filter(c => c.where === 'arena'); }
   slotsUsed() { let n = 0; for (const c of this.conns.values()) if (c.where === 'arena' || c.where === 'pending') n++; return n; }
   players() { return [...this.humans().map(c => c.p).filter(Boolean), ...this.bots]; }
-  status() { return { state: this.match.state, mode: this.match.mode, timeLeft: Math.ceil(this.match.t), humans: this.humans().length, bots: this.bots.length, max: this.o.maxPlayers, queue: this.queue.length }; }
+  status() { return { state: this.match.state, mode: this.match.mode, arena: this.match.arena, timeLeft: Math.ceil(this.match.t), humans: this.humans().length, bots: this.bots.length, max: this.o.maxPlayers, queue: this.queue.length }; }
 
   message(c, data) {
     if (typeof data !== 'string' || data.length > MAX_MSG_BYTES) return;
@@ -110,7 +110,7 @@ export class GameCore {
     if (h === 0 && !this.o.attract && this.match.state !== 'waiting') { this.match.state = 'waiting'; this.match.t = 0; }   // empty arena: next visitor starts fresh
   }
   roster() { return [...this.humans().filter(c => c.p).map(c => ({ id: c.id, name: c.name, color: c.p.color })), ...this.bots.map(b => ({ id: b.id, name: b.name, color: b.color, bot: 1 }))]; }
-  matchInfo() { const M = this.match; return { s: M.state, t: Math.max(0, Math.round(M.t * 10) / 10), id: M.id, mode: M.mode, limit: this.o.scores[M.mode] }; }
+  matchInfo() { const M = this.match; return { s: M.state, t: Math.max(0, Math.round(M.t * 10) / 10), id: M.id, mode: M.mode, arena: M.arena, limit: this.o.scores[M.mode] }; }
 
   /* ---------------- gameplay ---------------- */
   onInput(c, list) {
@@ -166,7 +166,20 @@ export class GameCore {
   }
   spawn(p) { const i = SH.pickSpawn(this.C, p, this.players(), this.spawnState, this.clock()); SH.placeAt(p, i, this.spawnState, this.clock()); this.events.push({ k: 'sp', id: p.id }); }
 
-  startCountdown() { this.match.state = 'countdown'; this.match.t = this.o.countdown; this.match.mode = this.o.modes[this.match.id % this.o.modes.length]; this.events.push({ k: 'm', m: this.matchInfo() }); }
+  /** Arenas have different solid boxes: swap colliders + bot nav graph. */
+  useArena(a) {
+    if (!this.layouts[a]) { const C = SH.buildColliders(SH.buildMap(a)); this.layouts[a] = { C, nav: buildNav(C, a) }; }
+    this.C = this.layouts[a].C; this.nav = this.layouts[a].nav;
+  }
+  startCountdown() { this.match.state = 'countdown'; this.match.t = this.o.countdown; this.match.mode = this.o.modes[this.match.id % this.o.modes.length];
+    // arena advances once per full round of modes, so every mode is played in every arena
+    const arena = this.o.arenas[Math.floor(this.match.id / this.o.modes.length) % this.o.arenas.length];
+    if (arena !== this.match.arena) {
+      this.match.arena = arena; this.useArena(arena);
+      // the new layout may put a crate where someone is standing: move everyone to a spawn point of the new map
+      for (const p of this.players()) { p.ai && (p.ai.path = []); if (p.alive) this.spawn(p); }
+    }
+    this.events.push({ k: 'm', m: this.matchInfo() }); }
   startMatch() {
     const M = this.match; M.state = 'playing'; M.t = this.o.time; M.id++;
     this.spawnState.forEach(s => { s.uses = 0; s.last = -99; });

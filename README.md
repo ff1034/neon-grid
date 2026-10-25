@@ -9,6 +9,7 @@
 - 每場輪流使用兩種模式：
   - 自由競技：淘汰對手得 1 分，先到 20 分獲勝。
   - 佔領中繼站：獨自站在中央塔頂每秒得 1 分，先到 60 分獲勝；兩人以上同時在塔頂就算爭奪中，誰都不得分。
+- 場景每兩場輪換一次（霓虹城市 → 地下電網），兩種模式在兩個場景都會輪到；地形與碰撞完全相同，只有外觀不同。單人練習每開一局換一個場景。
 - 局長 5 分鐘。倒數期間不能射擊。
 - 三把武器：脈衝步槍（中距離）、電弧散射器（近距離）、軌道狙擊槍（遠距離，單發 70）。
 - 地圖道具：青色晶體回復 50 護盾（20 秒重生），琥珀色箭頭給 6 秒加速（25 秒重生）。
@@ -50,7 +51,9 @@ neon-grid-online/
   public/bot.js        機器人 AI（產生與真人相同格式的操作）
   public/shared.js     共用規則：地圖、物理、武器、模式、道具
   public/models.js     載入 public/models/*.glb（角色、三把槍、場景、道具），缺檔就沿用程式模型
-  public/models/       Blender 匯出的 .glb；碰撞仍由 shared.js 的 buildMap() 決定，模型只負責外觀
+  public/models/       Blender 匯出的 .glb；碰撞仍由 shared.js 的 buildMap() 決定，模型只負責外觀。
+                       arena.glb（霓虹城市）與 arena_underground.glb（地下電網）共用同一套碰撞盒，
+                       由伺服器每場輪換（shared.js 的 ARENAS / ARENA_ORDER），所有人看到同一個場景
   public/vendor/three  three.js r128（MIT 授權），隨專案部署，不依賴外部 CDN
 ```
 

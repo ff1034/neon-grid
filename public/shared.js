@@ -1,6 +1,6 @@
 // NEON GRID shared rules: used by the browser client and by the Cloudflare Durable Object server.
 // Keep this file free of DOM / THREE dependencies so both sides simulate identically.
-export const VERSION = 3;
+export const VERSION = 4;
 export const MAX_PLAYERS = 8;
 export const MAX_QUEUE = 64;
 export const TICK = 1 / 60;
@@ -11,6 +11,11 @@ export const MATCH = { time: 300, countdown: 10, results: 10, minPlayers: 2, off
 export const MODES = {
   ffa: { id: 'ffa', name: '自由競技', score: 20, desc: '淘汰對手得 1 分' },
   koth: { id: 'koth', name: '佔領中繼站', score: 60, desc: '獨自站在中繼塔頂，每秒得 1 分' } };
+// Arena looks rotate per match (server-decided, everyone sees the same one); collisions are identical for all of them.
+export const ARENAS = {
+  city: { id: 'city', name: '霓虹城市' },
+  underground: { id: 'underground', name: '地下電網' } };
+export const ARENA_ORDER = ['city', 'underground'];
 export const KOTH_ZONE = { x0: -3.15, x1: 3.15, z0: -3.15, z1: 3.15, y0: 3.3, y1: 6 };
 export const canFire = state => state === 'playing' || state === 'waiting';
 export function inZone(p) { const q = p.pos; return p.alive && q.x > KOTH_ZONE.x0 && q.x < KOTH_ZONE.x1 && q.z > KOTH_ZONE.z0 && q.z < KOTH_ZONE.z1 && q.y >= KOTH_ZONE.y0 && q.y < KOTH_ZONE.y1; }
@@ -33,6 +38,14 @@ export const NODES = [[0, 0, 10], [0, 0, -10], [-8, 0, 0], [8, 0, 0], [-8, 0, 10
   [-16, 0, 2.6], [16, 0, 2.6], [-16, 0, -2.6], [16, 0, -2.6], [-16, 3.5, 17.2], [16, 3.5, 17.2], [-16, 3.5, -17.2], [16, 3.5, -17.2],
   [-10, 3.5, 18.5], [0, 3.5, 18.5], [10, 3.5, 18.5], [-10, 3.5, -18.5], [0, 3.5, -18.5], [10, 3.5, -18.5], [0, 3.5, 10], [0, 3.5, 0], [0, 3.5, -10]];
 export const STAIR_LINKS = [[24, 28], [25, 29], [26, 30], [27, 31]];
+// Underground nav: same graph as the city (so STAIR_LINKS indices still hold), but the bridge-centre nodes move onto the
+// new catwalks (north: two narrow side walkways, south: one diagonal), plus a few nodes where those join the reactor/platforms.
+const U_NODES = NODES.map(n => n.slice());
+U_NODES[38] = [1.8, 3.5, 10]; U_NODES[40] = [-4, 3.5, -9.6]; U_NODES[12] = [-13.5, 0, -15];  // #12 sat inside the west crate maze
+U_NODES.push([-1.8, 3.5, 10], [1.8, 3.5, 2], [-1.8, 3.5, 2], [1.8, 3.5, 17], [-1.8, 3.5, 17], [0, 3.5, -2.6], [-8, 3.5, -17]);
+export const LAYOUTS = {
+  city: { nodes: NODES, stairLinks: STAIR_LINKS },
+  underground: { nodes: U_NODES, stairLinks: STAIR_LINKS } };
 
 export const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 export const r3 = v => Math.round(v * 1000) / 1000;
@@ -40,26 +53,55 @@ export const r4 = v => Math.round(v * 10000) / 10000;
 export const angWrap = a => { if (!isFinite(a)) return 0; a = a % (2 * Math.PI); if (a > Math.PI) a -= 2 * Math.PI; if (a < -Math.PI) a += 2 * Math.PI; return a; };
 export function sanitizeName(s) { return (String(s || '').replace(/[\u0000-\u001f\u007f<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 16)) || '代理人'; }
 
-/* ---------- Map: every solid box. [x0,x1,y0,y1,z0,z1,material,uvScale] ---------- */
-export function buildMap() {
-  const M = [], b = (x0, x1, y0, y1, z0, z1, mat, uv = 4) => M.push([x0, x1, y0, y1, z0, z1, mat, uv]);
-  b(-25.5, -24.5, 0, 9, -25.5, 25.5, 'concD'); b(24.5, 25.5, 0, 9, -25.5, 25.5, 'concD');
-  b(-24.5, 24.5, 0, 9, -25.5, -24.5, 'concD'); b(-24.5, 24.5, 0, 9, 24.5, 25.5, 'concD');
-  b(-3, 3, 0, 3.3, -3, 3, 'tower', 3); b(-3.15, 3.15, 3.3, 3.5, -3.15, 3.15, 'metal');
-  b(-1.25, 1.25, 3.2, 3.5, 3.15, 16, 'grate', 2); b(-1.25, 1.25, 3.2, 3.5, -16, -3.15, 'grate', 2);
-  b(-17, 17, 3.1, 3.5, 16, 24.5, 'grate', 2); b(-17, 17, 3.1, 3.5, -24.5, -16, 'grate', 2);
-  for (const x of [-13.5, -7, 7, 13.5]) { b(x - .3, x + .3, 0, 3.1, 16, 16.6, 'metal', 2); b(x - .3, x + .3, 0, 3.1, -16.6, -16, 'metal', 2); }
-  for (const [a, c] of [[-14.5, -9], [-5, -1.25], [1.25, 5], [9, 14.5]]) { b(a, c, 3.5, 4.5, 16, 16.12, 'metal', 1); b(a, c, 3.5, 4.5, -16.12, -16, 'metal', 1); }
+/* ---------- Map: every solid box. [x0,x1,y0,y1,z0,z1,material,uvScale,group] ----------
+ * group names the Blender object the box belongs to (the .glb is built from these exact numbers). */
+export function buildMap(arena = 'city') {
+  const M = [], b = (x0, x1, y0, y1, z0, z1, mat, uv, group) => M.push([x0, x1, y0, y1, z0, z1, mat, uv, group]);
+  const U = arena === 'underground';
+  // shared by every arena: perimeter, upper platforms, pillars, stairs, side buildings, wall units, vents
+  b(-25.5, -24.5, 0, 9, -25.5, 25.5, 'concD', 4, 'Outer_Walls'); b(24.5, 25.5, 0, 9, -25.5, 25.5, 'concD', 4, 'Outer_Walls');
+  b(-24.5, 24.5, 0, 9, -25.5, -24.5, 'concD', 4, 'Outer_Walls'); b(-24.5, 24.5, 0, 9, 24.5, 25.5, 'concD', 4, 'Outer_Walls');
+  b(-17, 17, 3.1, 3.5, 16, 24.5, 'grate', 2, 'Upper_Platform_N'); b(-17, 17, 3.1, 3.5, -24.5, -16, 'grate', 2, 'Upper_Platform_S');
+  for (const x of [-13.5, -7, 7, 13.5]) { b(x - .3, x + .3, 0, 3.1, 16, 16.6, 'metal', 2, 'Pillars'); b(x - .3, x + .3, 0, 3.1, -16.6, -16, 'metal', 2, 'Pillars'); }
   for (let i = 1; i <= 12; i++) { const h = i * 3.5 / 12;
-    b(-17, -15, 0, h, 3 + i, 4 + i, 'metal', 2); b(15, 17, 0, h, 3 + i, 4 + i, 'metal', 2);
-    b(-17, -15, 0, h, -4 - i, -3 - i, 'metal', 2); b(15, 17, 0, h, -4 - i, -3 - i, 'metal', 2); }
-  for (const s of [-1, 1]) { const x0 = s > 0 ? 9.5 : -10.5, x1 = s > 0 ? 10.5 : -9.5; b(x0, x1, 0, 4, -12, -4, 'conc'); b(x0, x1, 0, 4, 4, 12, 'conc'); }
-  b(-24.5, -19, 0, 11, -9, 9, 'bldg', 6); b(19, 24.5, 0, 11, -9, 9, 'bldg', 6);
-  for (const c of [[4.5, 6.5, 1.1, 6, 8], [-6.5, -4.5, 1.1, -8, -6], [-7, -5, 2, 5.5, 6.5], [5, 7, 2, -6.5, -5.5], [-7, -6, 1.2, -1.5, 1.5], [6, 7, 1.2, -1.5, 1.5],
-    [-14.5, -12.5, 1.3, -1, 1], [12.5, 14.5, 1.3, -1, 1], [-23, -21, 1.1, 11, 13], [-22, -20, 2, -14, -12], [17, 18.5, 1.1, 10.5, 12], [21, 23, 1.1, -13, -11], [20, 22, 2, 12, 14],
-    [-8, -7, 1.1, 13, 14], [7, 8, 1.1, -14, -13], [-18.5, -17, 1.1, -12, -10.5]]) b(c[0], c[1], 0, c[2], c[3], c[4], 'crate', 1.2);
-  for (const s of [1, -1]) for (const x of [-11, -3.5, 4, 11.5]) b(x, x + 1.1, 0, 2.1, s > 0 ? 23.7 : -24.5, s > 0 ? 24.5 : -23.7, 'dark', 1);
-  for (const [x, z] of [[-21.5, 15.2], [21.5, -15.2], [-12, -14]]) b(x - .6, x + .6, 0, .5, z - .6, z + .6, 'metal', 1);
+    b(-17, -15, 0, h, 3 + i, 4 + i, 'metal', 2, 'Stairs_1'); b(15, 17, 0, h, 3 + i, 4 + i, 'metal', 2, 'Stairs_2');
+    b(-17, -15, 0, h, -4 - i, -3 - i, 'metal', 2, 'Stairs_3'); b(15, 17, 0, h, -4 - i, -3 - i, 'metal', 2, 'Stairs_4'); }
+  for (const s of [-1, 1]) { const x0 = s > 0 ? 9.5 : -10.5, x1 = s > 0 ? 10.5 : -9.5; b(x0, x1, 0, 4, -12, -4, 'conc', 4, 'Divider_Walls'); b(x0, x1, 0, 4, 4, 12, 'conc', 4, 'Divider_Walls'); }
+  b(-24.5, -19, 0, 11, -9, 9, 'bldg', 6, 'Side_Building_W'); b(19, 24.5, 0, 11, -9, 9, 'bldg', 6, 'Side_Building_E');
+  for (const s of [1, -1]) for (const x of [-11, -3.5, 4, 11.5]) b(x, x + 1.1, 0, 2.1, s > 0 ? 23.7 : -24.5, s > 0 ? 24.5 : -23.7, 'dark', 1, 'Wall_Units');
+  for (const [x, z] of [[-21.5, 15.2], [21.5, -15.2], [-12, -14]]) b(x - .6, x + .6, 0, .5, z - .6, z + .6, 'metal', 1, 'Floor_Plates');
+  if (!U) {
+    // city: square relay tower, two straight bridges, symmetric cover
+    b(-3, 3, 0, 3.3, -3, 3, 'tower', 3, 'Central_Tower'); b(-3.15, 3.15, 3.3, 3.5, -3.15, 3.15, 'metal', 4, 'Central_Tower');
+    b(-1.25, 1.25, 3.2, 3.5, 3.15, 16, 'grate', 2, 'North_Bridge'); b(-1.25, 1.25, 3.2, 3.5, -16, -3.15, 'grate', 2, 'South_Bridge');
+    for (const [a, c] of [[-14.5, -9], [-5, -1.25], [1.25, 5], [9, 14.5]]) { b(a, c, 3.5, 4.5, 16, 16.12, 'metal', 1, 'Railings'); b(a, c, 3.5, 4.5, -16.12, -16, 'metal', 1, 'Railings'); }
+    for (const c of [[4.5, 6.5, 1.1, 6, 8], [-6.5, -4.5, 1.1, -8, -6], [-7, -5, 2, 5.5, 6.5], [5, 7, 2, -6.5, -5.5], [-7, -6, 1.2, -1.5, 1.5], [6, 7, 1.2, -1.5, 1.5],
+      [-14.5, -12.5, 1.3, -1, 1], [12.5, 14.5, 1.3, -1, 1], [-23, -21, 1.1, 11, 13], [-22, -20, 2, -14, -12], [17, 18.5, 1.1, 10.5, 12], [21, 23, 1.1, -13, -11], [20, 22, 2, 12, 14],
+      [-8, -7, 1.1, 13, 14], [7, 8, 1.1, -14, -13], [-18.5, -17, 1.1, -12, -10.5]]) b(c[0], c[1], 0, c[2], c[3], c[4], 'crate', 1.2, 'Crates');
+    return M;
+  }
+  // underground: round reactor core (octagon of 5 non-overlapping boxes, still inside ±3) with a ±3.15 glass deck on top
+  const oct = (r, w, y0, y1, mat, g) => { const s = r * Math.SQRT1_2;
+    b(-s, s, y0, y1, -s, s, mat, 3, g);
+    b(s, r, y0, y1, -w, w, mat, 3, g); b(-r, -s, y0, y1, -w, w, mat, 3, g); b(-w, w, y0, y1, s, r, mat, 3, g); b(-w, w, y0, y1, -r, -s, mat, 3, g); };
+  oct(3, 1.24, 0, 3.3, 'tower', 'Reactor_Core'); oct(3.15, 1.3, 3.3, 3.5, 'metal', 'Reactor_Core');
+  // north (+z): two narrow walkways with nothing between them; they leave the deck where its centre square ends
+  const deckS = 3.15 * Math.SQRT1_2;
+  for (const s of [-1, 1]) b(s > 0 ? 1.35 : -2.25, s > 0 ? 2.25 : -1.35, 3.2, 3.5, deckS, 16, 'grate', 2, 'North_Catwalks');
+  // south (-z): one diagonal catwalk to x = -8, built as 13 short segments, each shifted sideways (walkable stair-step edge)
+  const segN = 13, segL = (16 - 3.15) / segN;
+  for (let i = 0; i < segN; i++) { const z1 = -3.15 - i * segL, z0 = z1 - segL, cx = -8 * (i / (segN - 1));
+    b(cx - .8, cx + .8, 3.2, 3.5, z0, z1, 'grate', 2, 'South_Catwalk'); }
+  // railings line the platform edges, with gaps where the walkways land and a jump-down gap on each side
+  for (const [a, c] of [[-14.5, -3], [-.9, .9], [3, 9], [12, 14.5]]) b(a, c, 3.5, 4.5, 16, 16.12, 'metal', 1, 'Railings');
+  for (const [a, c] of [[-14.5, -9.6], [-6.4, -1.5], [1.5, 6], [9.5, 14.5]]) b(a, c, 3.5, 4.5, -16.12, -16, 'metal', 1, 'Railings');
+  // blast shields on the platforms: chest-high cover
+  for (const [x0, x1, z0, z1] of [[-11, -9.2, 19.4, 19.7], [5.5, 7.3, 19.4, 19.7], [-2, -.2, 22, 22.3],
+    [9, 10.8, -19.7, -19.4], [-4.5, -2.7, -19.7, -19.4], [2, 3.8, -22.3, -22]]) b(x0, x1, 3.5, 4.7, z0, z1, 'dark', 1, 'Blast_Shields');
+  // asymmetric cover: a dense transformer / container maze in the west, open sightlines in the east
+  for (const c of [[-8.5, -6.5, 2, 1.5, 3.5], [-7, -5.5, 1.2, -3, -1.5], [-14.8, -12.8, 2, .3, 2.1], [-13, -11.5, 1.1, -1.9, -.6], [-16.5, -15, 2, -1.5, 1.5],
+    [-8, -6, 1.1, 7, 9], [-6, -4.5, 2, -9, -7], [-14.5, -12.5, 1.3, 9, 11], [-13.5, -12, 2, -11, -9], [-20, -18.5, 1.1, 10.5, 12], [-22.5, -21, 2, -13, -11.5],
+    [-5.5, -4, 1.1, 12.5, 14], [6, 7, 1.2, -1.5, 1.5], [13, 14.5, 1.3, 2, 3.5], [20, 22, 2, 12, 14], [7, 8, 1.1, -14, -13]]) b(c[0], c[1], 0, c[2], c[3], c[4], 'crate', 1.2, 'Crates');
   return M;
 }
 export function buildColliders(map) {
