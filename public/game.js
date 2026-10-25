@@ -1,5 +1,6 @@
 import * as SH from './shared.js';
 import { GameCore } from './core.js';
+import { loadModels, prepare, faceForward, makeAgentModel } from './models.js';
 (function(){
 'use strict';
 const V3 = THREE.Vector3;
@@ -129,6 +130,13 @@ function addLight(hex,int,dist,x,y,z,core){const l=new THREE.PointLight(hex,int*
 
 const CYAN=0x2ef2ff,MAG=0xff2fb4,AMB=0xffb43a;
 
+let MDL={};  // public/models/*.glb, filled in boot(); a missing file stays null and the procedural model is used
+/** arena.glb leaves flat Sign_1… planes on the side buildings; the game paints the neon text (glTF UVs → flipY off). */
+const ARENA_SIGNS={Sign_1:['鷺光電機','HERON ELECTRIC','#2ef2ff'],Sign_2:['霓虹保險','NEON SURETY','#ff2fb4'],
+  Sign_3:['網咖','NET CAFE 24H','#ffb43a'],Sign_4:['雨巷拉麵','RAIN ALLEY RAMEN','#ff2fb4']};
+function arenaSigns(root){for(const [name,[t,sub,col]] of Object.entries(ARENA_SIGNS)){const o=root.getObjectByName(name);if(!o||!o.isMesh)continue;
+  const tx=signTex(t,sub,col,768,274,140);tx.flipY=false;tx.needsUpdate=true;o.material=signMat(tx,1.3);o.castShadow=false;}}
+
 function buildEnvironment(){
   // reflection environment: stylised neon room for the PMREM
   const env=new THREE.Scene();
@@ -153,9 +161,13 @@ function buildWorld(){
   M.tower=new THREE.MeshStandardMaterial({color:0x2b3646,roughness:.35,metalness:.45,emissive:CYAN,emissiveMap:circuitTex(),emissiveIntensity:1.25});
   M.bldg=new THREE.MeshStandardMaterial({map:concreteTex(17,'#8d929b'),color:0xffffff,roughness:.9,metalness:.1,emissive:0xffffff,emissiveMap:windowsTex(5,6,12),emissiveIntensity:.18});
 
-  // floor + every solid box comes from the shared map, so client and server collide identically
-  const fl=new THREE.Mesh(new THREE.PlaneGeometry(50,50),M.floor);fl.rotation.x=-Math.PI/2;fl.receiveShadow=true;scene.add(fl);
+  // every solid box comes from the shared map, so client and server collide identically;
+  // public/models/arena.glb (when present) only replaces how the map looks
   const MAP=SH.buildMap();colliders=SH.buildColliders(MAP);
+  const arena=MDL.arena&&MDL.arena.scene;
+  if(arena){scene.add(prepare(arena));arenaSigns(arena);}
+  else{
+  const fl=new THREE.Mesh(new THREE.PlaneGeometry(50,50),M.floor);fl.rotation.x=-Math.PI/2;fl.receiveShadow=true;scene.add(fl);
   for(const m of MAP)box(m[0],m[1],m[2],m[3],m[4],m[5],M[m[6]],{uvs:m[7],shadow:true});
   for(const s of [-1,1]){nline(-24.4,8.9,s*24.4,24.4,8.9,s*24.4,s>0?MAG:CYAN,.05);}
   nline(-24.4,8.9,-24.4,-24.4,8.9,24.4,AMB,.05);nline(24.4,8.9,-24.4,24.4,8.9,24.4,AMB,.05);
@@ -191,12 +203,13 @@ function buildWorld(){
   // cover
   // dumpster lids glow
   nline(-14.5,1.32,-1,-12.5,1.32,-1,AMB,.02);nline(12.5,1.32,1,14.5,1.32,1,AMB,.02);
+  }
 
   // under-platform props
   const vt=[vendingTex(61,'#ff2fb4'),vendingTex(62,'#2ef2ff'),vendingTex(63,'#ffb43a')];
   let vi=0;for(const s of [1,-1])for(const x of [-11,-3.5,4,11.5]){plane(1,1.95,signMat(vt[vi++%3],1.1),x+.55,1.05,s>0?23.68:-23.68,s>0?Math.PI:0);}
-  for(const s of [1,-1]){for(const yy of [2.75,2.95]){tube(new V3(-17,yy,s*(23.9-(yy-2.7)*3)),new V3(17,yy,s*(23.9-(yy-2.7)*3)),.09,M.metal);}
-    nline(-16,3.05,s*20,16,3.05,s*20,s>0?MAG:CYAN,.03,1.8);
+  for(const s of [1,-1]){if(!arena){for(const yy of [2.75,2.95]){tube(new V3(-17,yy,s*(23.9-(yy-2.7)*3)),new V3(17,yy,s*(23.9-(yy-2.7)*3)),.09,M.metal);}
+    nline(-16,3.05,s*20,16,3.05,s*20,s>0?MAG:CYAN,.03,1.8);}
     plane(5,1.8,signMat(signTex(s>0?'維修平台':'貨物通道',s>0?'DECK A':'DECK B',s>0?'#ff2fb4':'#2ef2ff',512,184,100),1.2),0,1.9,s>0?24.42:-24.42,s>0?Math.PI:0);}
   // big billboards on perimeter walls
   plane(9,3.4,signMat(signTex('ODEN NET','訊號永不斷線','#2ef2ff',768,290,150),1.25),-24.4,6.6,15,Math.PI/2);
@@ -310,7 +323,15 @@ const shieldMatProto=new THREE.ShaderMaterial({transparent:true,depthWrite:false
 function nameTag(name,color){const [c,g]=mk(256,64);g.font='700 30px "Noto Sans TC","Chakra Petch",sans-serif';g.textAlign='center';g.textBaseline='middle';
   g.fillStyle='rgba(4,8,18,.6)';const w=Math.min(250,g.measureText(name).width+30);g.fillRect(128-w/2,10,w,44);g.fillStyle='#'+new THREE.Color(color).getHexString();g.fillRect(128-w/2,52,w,2);
   g.fillStyle='#fff';g.fillText(name,128,32);const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex(c),transparent:true,depthWrite:false,fog:false}));s.scale.set(1.5,.375,1);return s;}
+function agentExtras(a,g){
+  const sh=new THREE.Mesh(new THREE.SphereGeometry(1,24,16),shieldMatProto.clone());sh.material.uniforms.uColor.value=new THREE.Color(a.color);sh.scale.set(.62,1.08,.62);sh.position.y=.95;g.add(sh);
+  const tag=nameTag(a.name,a.color);tag.position.y=2.3;g.add(tag);return {shield:sh,tag};}
+/** agent.glb：每位玩家一份骨架，Idle/Run/Jump 依移動狀態切換，Fire 由射擊事件觸發，再加上瞄準俯仰。 */
+function buildAgentModel(a){
+  const g=new THREE.Group();const anim=makeAgentModel(MDL.agent,a.color);g.add(anim.model);
+  g.userData=Object.assign({anim},agentExtras(a,g));scene.add(g);a.mesh=g;}
 function buildAgentMesh(a){
+  if(MDL.agent){buildAgentModel(a);return;}
   const g=new THREE.Group();
   const armor=new THREE.MeshStandardMaterial({color:0x2a3242,metalness:.35,roughness:.45});
   const plate=new THREE.MeshStandardMaterial({color:new THREE.Color(a.color).multiplyScalar(.85),metalness:.35,roughness:.38,emissive:a.color,emissiveIntensity:.18});
@@ -434,9 +455,17 @@ function buildViewmodel(){
   const glove=new THREE.MeshStandardMaterial({color:0x12161e,roughness:.7,metalness:.15});
   for(const G of [R,A,Lg]){add(G,.07,.085,.11,.005,-.075,.11,glove,-.3);const fh=add(G,.075,.07,.12,-.012,-.052,G===R?-.33:G===A?-.2:-.4,glove,.1);fh.rotation.z=.2;
     add(G,.085,.09,.3,.04,-.13,.28,new THREE.MeshStandardMaterial({color:0x1d2533,roughness:.5,metalness:.5}),-.35);}
+  // public/models/gun_*.glb replace a procedural gun whole (hands included); the model origin is the right-hand grip
+  const GUN_POS=new V3(0,-.065,-.09),gunDst=[R,A,Lg];
+  [MDL.gun_pulse,MDL.gun_arc,MDL.gun_rail].forEach((gm,i)=>{if(!gm)return;
+    const m=faceForward(prepare(gm.scene,{shadow:false}));m.position.copy(GUN_POS);const G=new THREE.Group();G.add(m);gunDst[i]=G;
+    const mz=m.getObjectByName('Muzzle')||G,named=(p,n)=>Array.from({length:n},(_,k)=>m.getObjectByName(p+(k+1))).filter(o=>o&&o.isMesh);
+    if(i===0){VM.rMuzzle=mz;const scr=m.getObjectByName('Screen');if(scr&&scr.isMesh){VM.rScreen.t.flipY=false;VM.rScreen.t.needsUpdate=true;scr.material=VM.rScreen.m;}}
+    else if(i===1){VM.aMuzzle=mz;const c=named('Cell_',6);if(c.length)VM.cells=c;}
+    else{VM.lMuzzle=mz;const r=named('Rod_',4);if(r.length)VM.rods=r;}});
   const flashTex=starSprite();
-  VM.flash=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,toneMapped:false}));VM.flash.visible=false;VM.flash.scale.setScalar(.22);VM.rMuzzle.add(VM.flash);{const w=new THREE.Mesh(new THREE.BoxGeometry(.001,.001,.001),VM.cellOff);w.position.set(0,-5,0);A.add(w);}
-  VM.guns=[R,A,Lg];VM.holder=new THREE.Group();VM.root.add(VM.holder);VM.holder.add(R);VM.holder.add(A);VM.holder.add(Lg);
+  VM.flash=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,toneMapped:false}));VM.flash.visible=false;VM.flash.scale.setScalar(.22);VM.rMuzzle.add(VM.flash);{const w=new THREE.Mesh(new THREE.BoxGeometry(.001,.001,.001),VM.cellOff);w.position.set(0,-5,0);gunDst[1].add(w);}
+  VM.guns=gunDst;VM.holder=new THREE.Group();VM.root.add(VM.holder);for(const G of gunDst)VM.holder.add(G);
   VM.base=new V3(.17,-.175,-.36);VM.kick=0;VM.swayX=0;VM.swayY=0;VM.bob=0;VM.flashT=0;VM.lastAmmo=-1;
 }
 function drawScreen(n,max,reloading){const s=VM.rScreen,g=s.g;g.fillStyle='#02060c';g.fillRect(0,0,128,64);g.fillStyle=reloading?'#ffb43a':(n<=max*.25?'#ffb43a':'#2ef2ff');
@@ -446,9 +475,11 @@ function drawScreen(n,max,reloading){const s=VM.rScreen,g=s.g;g.fillStyle='#0206
 function updateMesh(a,dt){
   const m=a.mesh;if(!m)return;m.visible=a.alive;if(!a.alive)return;const u=m.userData;
   m.position.copy(a.pos);m.rotation.y=a.yaw;
-  const sp=Math.hypot(a.vel.x,a.vel.z);a.walk+=dt*sp*1.7;const sw=Math.sin(a.walk)*Math.min(1,sp/4)*.75;
+  const sp=Math.hypot(a.vel.x,a.vel.z);
+  if(u.anim){const run=sp>.6;u.anim.setBase(!a.onGround?'Jump':run?'Run':'Idle',run?clamp(sp/P.speed,.6,1.5):1);u.anim.mixer.update(dt);u.anim.aim(a.pitch);}
+  else{a.walk+=dt*sp*1.7;const sw=Math.sin(a.walk)*Math.min(1,sp/4)*.75;
   if(a.onGround){u.legs[0].rotation.x=sw;u.legs[1].rotation.x=-sw;}else{u.legs[0].rotation.x=.45;u.legs[1].rotation.x=-.35;}
-  u.torso.position.y=.95+Math.abs(Math.cos(a.walk))*.035*Math.min(1,sp/4);u.torso.rotation.x=a.pitch*.35;u.head.rotation.x=a.pitch*.4;u.gun.rotation.x=a.pitch*.3;
+  u.torso.position.y=.95+Math.abs(Math.cos(a.walk))*.035*Math.min(1,sp/4);u.torso.rotation.x=a.pitch*.35;u.head.rotation.x=a.pitch*.4;u.gun.rotation.x=a.pitch*.3;}
   const su=u.shield.material.uniforms;su.uT.value=gameTime;su.uA.value=Math.max(a.hitT>0?a.hitT*3.2:0,a.protect>0?.6:0);su.uHex.value=a.protect>0?1:.3;u.shield.visible=su.uA.value>.01;
   u.tag.visible=state!=='attract'&&a.pos.distanceTo(camera.position)<38;
 }
@@ -613,6 +644,7 @@ const _o=new V3(),_f=new V3(),_hit=new V3(),_nrm=new V3(),_mz=new V3(),_tc=new V
 const inMatch=()=>state==='online';
 const isLive=()=>state==='online'&&net.m.s!=='results';
 function muzzleWorld(a,out){if(a===local){return out.set(.17,-.15,-.8).applyMatrix4(camera.matrixWorld);}
+  const an=a.mesh&&a.mesh.userData.anim;if(an&&an.muzzle&&a.mesh.visible){a.mesh.updateMatrixWorld(true);return an.muzzle.getWorldPosition(out);}
   aimDir(a.yaw,a.pitch,_f);return out.set(a.pos.x+Math.cos(a.yaw)*.2,a.pos.y+1.28,a.pos.z-Math.sin(a.yaw)*.2).addScaledVector(_f,.7);}
 
 /* ============ Pickups & relay zone visuals ============ */
@@ -621,17 +653,21 @@ function buildPickupsFX(){
   const padMat=new THREE.MeshStandardMaterial({color:0x2a3240,roughness:.5,metalness:.4});
   for(const p of SH.PICKUPS){
     const g=new THREE.Group();g.position.set(p.x,p.y,p.z);scene.add(g);
-    const col=p.type==='shield'?CYAN:AMB;
-    const pad=new THREE.Mesh(new THREE.CylinderGeometry(.6,.66,.06,28),padMat);pad.position.y=.03;pad.receiveShadow=true;g.add(pad);
+    const col=p.type==='shield'?CYAN:AMB,pm=p.type==='shield'?MDL.pickup_shield:MDL.pickup_boost;
     const ring=new THREE.Mesh(new THREE.TorusGeometry(.56,.02,6,40),neon(col,2.4));ring.rotation.x=Math.PI/2;ring.position.y=.07;g.add(ring);
-    const core=new THREE.Group();core.position.y=1;g.add(core);
+    const core=new THREE.Group();g.add(core);let baseY=1,glowY=0;
+    // pickup_*.glb: Base stays on the pad, Core floats and spins (same animation as the procedural core)
+    const model=pm&&prepare(pm.scene.clone(true)),mcore=model&&model.getObjectByName('Core');
+    if(mcore){g.add(model);core.add(mcore);baseY=0;glowY=mcore.position.y;}
+    else{const pad=new THREE.Mesh(new THREE.CylinderGeometry(.6,.66,.06,28),padMat);pad.position.y=.03;pad.receiveShadow=true;g.add(pad);
     if(p.type==='shield'){const m=new THREE.Mesh(new THREE.OctahedronGeometry(.3,0),new THREE.MeshStandardMaterial({color:0x0b2a33,emissive:CYAN,emissiveIntensity:1.8,metalness:.3,roughness:.2,flatShading:true}));m.scale.y=1.4;core.add(m);
       const h=new THREE.Mesh(new THREE.TorusGeometry(.42,.015,6,6),neon(CYAN,2.6));core.add(h);}
     else{for(const k of [0,1]){const c=new THREE.Group();c.position.y=k*.26-.13;core.add(c);
-      for(const s of [-1,1]){const b=new THREE.Mesh(new THREE.BoxGeometry(.34,.07,.07),neon(AMB,2.8));b.position.x=s*.12;b.rotation.z=s*.6;c.add(b);}}}
+      for(const s of [-1,1]){const b=new THREE.Mesh(new THREE.BoxGeometry(.34,.07,.07),neon(AMB,2.8));b.position.x=s*.12;b.rotation.z=s*.6;c.add(b);}}}}
+    core.position.y=baseY;
     const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowSprite('rgba(255,255,255,.5)',true),color:new THREE.Color(col),blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:.55}));
-    glow.scale.setScalar(1.6);core.add(glow);
-    PK.items.push({g,core,ring,on:true});
+    glow.scale.setScalar(1.6);glow.position.y=glowY;core.add(glow);
+    PK.items.push({g,core,ring,baseY,on:true});
   }
   const zg=new THREE.Group();zg.position.y=3.52;scene.add(zg);
   const zmat=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
@@ -645,7 +681,7 @@ function buildPickupsFX(){
 }
 function updatePickupsFX(t){
   PK.items.forEach((it,i)=>{const on=!!net.pk[i];it.core.visible=on;it.ring.material=neon(on?(SH.PICKUPS[i].type==='shield'?CYAN:AMB):0x55606e,on?2.4:1);
-    if(on){it.core.rotation.y=t*1.6;it.core.position.y=1+Math.sin(t*2+i)*.1;}});
+    if(on){it.core.rotation.y=t*1.6;it.core.position.y=it.baseY+Math.sin(t*2+i)*.1;}});
   const Z=PK.zone,show=net.m.mode==='koth'&&(net.m.s==='playing'||net.m.s==='countdown');Z.g.visible=show;if(!show)return;
   const [owner,cont]=net.zone;let col=new THREE.Color(0xdfe8f2),k=1.6;
   if(cont){col.set(MAG);k=1.6+Math.sin(t*5)*.6;}else if(owner){const a=agentById(owner);if(a)col.set(a.color);k=2.4;}
@@ -1006,7 +1042,7 @@ function onEvent(e){
     case 'join':if(!quiet&&e.id!==net.id){const r=net.names.get(e.id);if(r)sysFeed(r.name+(r.bot?'（機器人）':'')+' 加入');}break;
     case 'part':if(!quiet){const r=net.names.get(e.id);if(r)sysFeed(r.name+' 離開');}break;
     case 'sp':{const a=net.remotes.get(e.id);if(a){a.buf=[];a.spawnFx=true;}break;}
-    case 'sh':{if(e.a===net.id)break;const a=net.remotes.get(e.a);if(!a)break;const w=WEAPONS[e.w]||WEAPONS[0];muzzleWorld(a,_mz);flash(_mz,w.color,w.pellets?.9:w.id==='rail'?1:.55);
+    case 'sh':{if(e.a===net.id)break;const a=net.remotes.get(e.a);if(!a)break;const w=WEAPONS[e.w]||WEAPONS[0];if(a.mesh&&a.mesh.userData.anim)a.mesh.userData.anim.oneShot('Fire');muzzleWorld(a,_mz);flash(_mz,w.color,w.pellets?.9:w.id==='rail'?1:.55);
       shotFX(a,w,_mz,e.e.map(q=>({x:q[0],y:q[1],z:q[2],hit:q[3],n:q.length>4?{x:q[4],y:q[5],z:q[6]}:null})),false);if(!quiet)sfx(w.id,_mz);break;}
     case 'hit':{const a=agentById(e.a),v=agentById(e.v);
       if(e.a===net.id&&e.d>0){hitMarker(!!e.kill);sfx(e.kill?'kill':'hit');}
@@ -1093,6 +1129,7 @@ addEventListener('resize',applyQuality);
 async function boot(){
   const bar=$('#bootbar');const tick=p=>{bar.style.width=p+'%';return new Promise(r=>setTimeout(r,16));};
   try{await Promise.race([Promise.all([document.fonts.load('700 64px "Chakra Petch"'),document.fonts.load('900 64px "Noto Sans TC"'),document.fonts.load('700 30px "Noto Sans TC"')]),new Promise(r=>setTimeout(r,2500))]);}catch(e){}
+  await tick(5);MDL=await loadModels(p=>{bar.style.width=(5+p*10)+'%';});
   await tick(15);buildWorld();await tick(55);buildSteam();buildFX();buildViewmodel();buildPickupsFX();await tick(75);
   buildComposer();applyQuality();bindUI();await tick(90);
   startAttract();

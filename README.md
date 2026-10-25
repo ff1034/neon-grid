@@ -49,6 +49,8 @@ neon-grid-online/
                        （伺服器與單人模式共用同一份）
   public/bot.js        機器人 AI（產生與真人相同格式的操作）
   public/shared.js     共用規則：地圖、物理、武器、模式、道具
+  public/models.js     載入 public/models/*.glb（角色、三把槍、場景、道具），缺檔就沿用程式模型
+  public/models/       Blender 匯出的 .glb；碰撞仍由 shared.js 的 buildMap() 決定，模型只負責外觀
   public/vendor/three  three.js r128（MIT 授權），隨專案部署，不依賴外部 CDN
 ```
 
