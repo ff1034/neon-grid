@@ -4,18 +4,31 @@
  * 這裡統一轉 180° 讓它們面朝遊戲的 -Z；場景與道具本來就是世界座標，不轉。
  * 材質：TeamColor → 玩家代表色；TeamGlow → 代表色發光；名稱含 Glow/Neon 或有 Emission 的 → 發光（toneMapped:false，會進 bloom）。
  */
-export const MODEL_NAMES = ['agent', 'gun_pulse', 'gun_arc', 'gun_rail', 'arena', 'arena_underground', 'pickup_shield', 'pickup_boost'];
+export const MODEL_NAMES = ['agent', 'gun_pulse', 'gun_arc', 'gun_rail', 'arena', 'arena_underground', 'arena_skyfort', 'arena_magma', 'arena_coastal', 'pickup_shield', 'pickup_boost'];
+
+// 角色、武器與場景有兩個版本：電腦版 name.glb 與手機版 name_low.glb（角色 5,000 面內、武器 3,000 面內、場景不含細節物件且圓形分段減半）。
+// 手機與平板先試手機版，找不到再用電腦版；兩個都沒有就沿用程式模型。
+export const MOBILE = matchMedia('(pointer:coarse)').matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+const HAS_LOW = new Set(['agent', 'gun_pulse', 'gun_arc', 'gun_rail', 'arena', 'arena_underground', 'arena_skyfort', 'arena_magma', 'arena_coastal']);
+const filesFor = name => (MOBILE && HAS_LOW.has(name) ? [`${name}_low`, name] : [name]);
 
 export function loadModels(onProgress, timeoutMs = 15000) {
   const out = {};
   if (!THREE.GLTFLoader) return Promise.resolve(out);
   const loader = new THREE.GLTFLoader();
   let done = 0;
-  const one = name => new Promise(res => {
-    const finish = g => { if (!(name in out)) { out[name] = g; onProgress && onProgress(++done / MODEL_NAMES.length); } res(); };
-    loader.load(`models/${name}.glb`, finish, undefined, () => finish(null));
-    setTimeout(() => finish(null), timeoutMs);  // 行動網路太慢就先用程式模型
+  const tryLoad = file => new Promise(res => {
+    let settled = false;
+    const end = g => { if (!settled) { settled = true; res(g); } };
+    loader.load(`models/${file}.glb`, end, undefined, () => end(null));
+    setTimeout(() => end(null), timeoutMs);  // 行動網路太慢就先用程式模型
   });
+  const one = async name => {
+    let g = null;
+    for (const file of filesFor(name)) { g = await tryLoad(file); if (g) break; }
+    out[name] = g;
+    onProgress && onProgress(++done / MODEL_NAMES.length);
+  };
   return Promise.all(MODEL_NAMES.map(one)).then(() => out);
 }
 

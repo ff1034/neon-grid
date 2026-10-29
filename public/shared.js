@@ -1,6 +1,6 @@
 // NEON GRID shared rules: used by the browser client and by the Cloudflare Durable Object server.
 // Keep this file free of DOM / THREE dependencies so both sides simulate identically.
-export const VERSION = 4;
+export const VERSION = 5;
 export const MAX_PLAYERS = 8;
 export const MAX_QUEUE = 64;
 export const TICK = 1 / 60;
@@ -11,11 +11,15 @@ export const MATCH = { time: 300, countdown: 10, results: 10, minPlayers: 2, off
 export const MODES = {
   ffa: { id: 'ffa', name: '自由競技', score: 20, desc: '淘汰對手得 1 分' },
   koth: { id: 'koth', name: '佔領中繼站', score: 60, desc: '獨自站在中繼塔頂，每秒得 1 分' } };
-// Arena looks rotate per match (server-decided, everyone sees the same one); collisions are identical for all of them.
+// Arenas rotate every full round of modes (server-decided, everyone sees the same one); each has its own colliders (buildMap)
+// and bot nav graph (LAYOUTS), the outer shell (walls, platforms, stairs, side buildings) is shared so SPAWNS / PICKUPS fit all of them.
 export const ARENAS = {
   city: { id: 'city', name: '霓虹城市' },
-  underground: { id: 'underground', name: '地下電網' } };
-export const ARENA_ORDER = ['city', 'underground'];
+  underground: { id: 'underground', name: '地下電網' },
+  skyfort: { id: 'skyfort', name: '天穹要塞' },
+  magma: { id: 'magma', name: '熔岩工業區' },
+  coastal: { id: 'coastal', name: '海岸研究站' } };
+export const ARENA_ORDER = ['city', 'underground', 'skyfort', 'magma', 'coastal'];
 export const KOTH_ZONE = { x0: -3.15, x1: 3.15, z0: -3.15, z1: 3.15, y0: 3.3, y1: 6 };
 export const canFire = state => state === 'playing' || state === 'waiting';
 export function inZone(p) { const q = p.pos; return p.alive && q.x > KOTH_ZONE.x0 && q.x < KOTH_ZONE.x1 && q.z > KOTH_ZONE.z0 && q.z < KOTH_ZONE.z1 && q.y >= KOTH_ZONE.y0 && q.y < KOTH_ZONE.y1; }
@@ -43,9 +47,23 @@ export const STAIR_LINKS = [[24, 28], [25, 29], [26, 30], [27, 31]];
 const U_NODES = NODES.map(n => n.slice());
 U_NODES[38] = [1.8, 3.5, 10]; U_NODES[40] = [-4, 3.5, -9.6]; U_NODES[12] = [-13.5, 0, -15];  // #12 sat inside the west crate maze
 U_NODES.push([-1.8, 3.5, 10], [1.8, 3.5, 2], [-1.8, 3.5, 2], [1.8, 3.5, 17], [-1.8, 3.5, 17], [0, 3.5, -2.6], [-8, 3.5, -17]);
+// skyfort / coastal: cross bridges (east / west ones end on side-building balconies); skyfort also has the 8 m sky ring
+const CROSS_NODES = [[5, 3.5, 0], [-5, 3.5, 0], [11, 3.5, 0], [-11, 3.5, 0], [16.5, 3.5, 0], [-16.5, 3.5, 0],
+  [18.25, 3.5, 4.5], [18.25, 3.5, -4.5], [-18.25, 3.5, 4.5], [-18.25, 3.5, -4.5], [0, 3.5, 5], [0, 3.5, -5], [18.25, 3.5, 0], [-18.25, 3.5, 0]];
+const S_NODES = NODES.concat(CROSS_NODES, [[8, 3.5, 0], [-8, 3.5, 0], [0, 3.5, 8], [0, 3.5, -8], [8, 3.5, 8], [-8, 3.5, 8], [8, 3.5, -8], [-8, 3.5, -8], [4.5, 3.5, 8], [-4.5, 3.5, 8], [4.5, 3.5, -8], [-4.5, 3.5, -8],
+  [8, 3.5, 4.5], [8, 3.5, -4.5], [-8, 3.5, 4.5], [-8, 3.5, -4.5]]);
+// magma: no straight bridges, so the three bridge-centre nodes (#38-40) move: #38/#40 onto the NE/SW diagonals, plus the other
+// diagonals and the landings where they meet the platforms
+const MG_NODES = NODES.map(n => n.slice());
+MG_NODES[38] = [7.12, 3.5, 9.6]; MG_NODES[40] = [-7.12, 3.5, -9.6];
+MG_NODES.push([-7.12, 3.5, 9.6], [7.12, 3.5, -9.6], [11.69, 3.5, 15.6], [-11.69, 3.5, 15.6], [11.69, 3.5, -15.6], [-11.69, 3.5, -15.6],
+  [11.7, 3.5, 17.5], [-11.7, 3.5, 17.5], [11.7, 3.5, -17.5], [-11.7, 3.5, -17.5], [4.2, 3.5, 5.6], [-4.2, 3.5, 5.6], [4.2, 3.5, -5.6], [-4.2, 3.5, -5.6]);
 export const LAYOUTS = {
   city: { nodes: NODES, stairLinks: STAIR_LINKS },
-  underground: { nodes: U_NODES, stairLinks: STAIR_LINKS } };
+  underground: { nodes: U_NODES, stairLinks: STAIR_LINKS },
+  skyfort: { nodes: S_NODES, stairLinks: STAIR_LINKS },
+  magma: { nodes: MG_NODES, stairLinks: STAIR_LINKS },
+  coastal: { nodes: NODES.concat(CROSS_NODES), stairLinks: STAIR_LINKS } };
 
 export const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 export const r3 = v => Math.round(v * 1000) / 1000;
@@ -57,7 +75,8 @@ export function sanitizeName(s) { return (String(s || '').replace(/[\u0000-\u001
  * group names the Blender object the box belongs to (the .glb is built from these exact numbers). */
 export function buildMap(arena = 'city') {
   const M = [], b = (x0, x1, y0, y1, z0, z1, mat, uv, group) => M.push([x0, x1, y0, y1, z0, z1, mat, uv, group]);
-  const U = arena === 'underground';
+  if (!ARENAS[arena]) arena = 'city';
+  const U = arena === 'underground', MG = arena === 'magma';
   // shared by every arena: perimeter, upper platforms, pillars, stairs, side buildings, wall units, vents
   b(-25.5, -24.5, 0, 9, -25.5, 25.5, 'concD', 4, 'Outer_Walls'); b(24.5, 25.5, 0, 9, -25.5, 25.5, 'concD', 4, 'Outer_Walls');
   b(-24.5, 24.5, 0, 9, -25.5, -24.5, 'concD', 4, 'Outer_Walls'); b(-24.5, 24.5, 0, 9, 24.5, 25.5, 'concD', 4, 'Outer_Walls');
@@ -66,10 +85,12 @@ export function buildMap(arena = 'city') {
   for (let i = 1; i <= 12; i++) { const h = i * 3.5 / 12;
     b(-17, -15, 0, h, 3 + i, 4 + i, 'metal', 2, 'Stairs_1'); b(15, 17, 0, h, 3 + i, 4 + i, 'metal', 2, 'Stairs_2');
     b(-17, -15, 0, h, -4 - i, -3 - i, 'metal', 2, 'Stairs_3'); b(15, 17, 0, h, -4 - i, -3 - i, 'metal', 2, 'Stairs_4'); }
-  for (const s of [-1, 1]) { const x0 = s > 0 ? 9.5 : -10.5, x1 = s > 0 ? 10.5 : -9.5; b(x0, x1, 0, 4, -12, -4, 'conc', 4, 'Divider_Walls'); b(x0, x1, 0, 4, 4, 12, 'conc', 4, 'Divider_Walls'); }
+  // magma works has big pipelines here instead of the 4 m divider walls
+  if (!MG) for (const s of [-1, 1]) { const x0 = s > 0 ? 9.5 : -10.5, x1 = s > 0 ? 10.5 : -9.5; b(x0, x1, 0, 4, -12, -4, 'conc', 4, 'Divider_Walls'); b(x0, x1, 0, 4, 4, 12, 'conc', 4, 'Divider_Walls'); }
   b(-24.5, -19, 0, 11, -9, 9, 'bldg', 6, 'Side_Building_W'); b(19, 24.5, 0, 11, -9, 9, 'bldg', 6, 'Side_Building_E');
   for (const s of [1, -1]) for (const x of [-11, -3.5, 4, 11.5]) b(x, x + 1.1, 0, 2.1, s > 0 ? 23.7 : -24.5, s > 0 ? 24.5 : -23.7, 'dark', 1, 'Wall_Units');
   for (const [x, z] of [[-21.5, 15.2], [21.5, -15.2], [-12, -14]]) b(x - .6, x + .6, 0, .5, z - .6, z + .6, 'metal', 1, 'Floor_Plates');
+  if (arena === 'skyfort' || arena === 'magma' || arena === 'coastal') return buildMapNew(arena, b, M);
   if (!U) {
     // city: square relay tower, two straight bridges, symmetric cover
     b(-3, 3, 0, 3.3, -3, 3, 'tower', 3, 'Central_Tower'); b(-3.15, 3.15, 3.3, 3.5, -3.15, 3.15, 'metal', 4, 'Central_Tower');
@@ -102,6 +123,70 @@ export function buildMap(arena = 'city') {
   for (const c of [[-8.5, -6.5, 2, 1.5, 3.5], [-7, -5.5, 1.2, -3, -1.5], [-14.8, -12.8, 2, .3, 2.1], [-13, -11.5, 1.1, -1.9, -.6], [-16.5, -15, 2, -1.5, 1.5],
     [-8, -6, 1.1, 7, 9], [-6, -4.5, 2, -9, -7], [-14.5, -12.5, 1.3, 9, 11], [-13.5, -12, 2, -11, -9], [-20, -18.5, 1.1, 10.5, 12], [-22.5, -21, 2, -13, -11.5],
     [-5.5, -4, 1.1, 12.5, 14], [6, 7, 1.2, -1.5, 1.5], [13, 14.5, 1.3, 2, 3.5], [20, 22, 2, 12, 14], [7, 8, 1.1, -14, -13]]) b(c[0], c[1], 0, c[2], c[3], c[4], 'crate', 1.2, 'Crates');
+  return M;
+}
+/* skyfort / magma / coastal: every one of them keeps the shared shell above (walls, platforms, stairs, side buildings) and
+ * swaps the centre. All three have a 6.3 m tower whose 3.5 m deck is the relay zone, topped by an open crown frame
+ * (posts + edge beams, 6.6-6.9 m, above head height) and an 11 m spire. */
+function buildMapNew(arena, b, M) {
+  const crown = (g, post, mid) => {   // post: half size of the frame; mid: posts at the middle of each edge instead of the corners
+    if (mid) { b(post - .3, post, 3.5, 6.6, -.15, .15, 'metal', 1, g); b(-post, -post + .3, 3.5, 6.6, -.15, .15, 'metal', 1, g);
+      b(-.15, .15, 3.5, 6.6, post - .3, post, 'metal', 1, g); b(-.15, .15, 3.5, 6.6, -post, -post + .3, 'metal', 1, g); }
+    else for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const x = sx * post, z = sz * post;
+      b(Math.min(x, x - sx * .3), Math.max(x, x - sx * .3), 3.5, 6.6, Math.min(z, z - sz * .3), Math.max(z, z - sz * .3), 'metal', 1, g); }
+    b(-post, post, 6.6, 6.9, post - .3, post, 'metal', 1, g); b(-post, post, 6.6, 6.9, -post, -post + .3, 'metal', 1, g);
+    b(post - .3, post, 6.6, 6.9, -post + .3, post - .3, 'metal', 1, g); b(-post, -post + .3, 6.6, 6.9, -post + .3, post - .3, 'metal', 1, g);
+    b(-.9, .9, 7.4, 11, -.9, .9, 'tower', 2, 'Tower_Spire'); };
+  // four straight bridges (cross) plus a 1.5 m balcony on each side building where the east / west bridge lands
+  const cross = () => {
+    b(-1.25, 1.25, 3.2, 3.5, 3.15, 16, 'grate', 2, 'North_Bridge'); b(-1.25, 1.25, 3.2, 3.5, -16, -3.15, 'grate', 2, 'South_Bridge');
+    b(3.15, 17.5, 3.2, 3.5, -1.25, 1.25, 'grate', 2, 'East_Bridge'); b(-17.5, -3.15, 3.2, 3.5, -1.25, 1.25, 'grate', 2, 'West_Bridge');
+    b(17.5, 19, 3.1, 3.5, -6, 6, 'metal', 2, 'Balconies'); b(-19, -17.5, 3.1, 3.5, -6, 6, 'metal', 2, 'Balconies'); };
+  const rails = gaps => { for (const [a, c] of gaps) { b(a, c, 3.5, 4.5, 16, 16.12, 'metal', 1, 'Railings'); b(-c, -a, 3.5, 4.5, -16.12, -16, 'metal', 1, 'Railings'); } };
+  const crates = list => { for (const c of list) b(c[0], c[1], 0, c[2], c[3], c[4], 'crate', 1.2, 'Crates'); };
+  if (arena === 'skyfort') {
+    // floating fortress: square tower, cross bridges, and an elevated square ring (the "square frame") at 8 m around it
+    b(-3, 3, 0, 3.3, -3, 3, 'tower', 3, 'Central_Tower'); b(-3.15, 3.15, 3.3, 3.5, -3.15, 3.15, 'metal', 4, 'Central_Tower'); crown('Tower_Crown', 3.05);
+    cross();
+    for (const s of [-1, 1]) { const z0 = s > 0 ? 7.25 : -8.75, z1 = z0 + 1.5;
+      b(-8.75, -1.25, 3.2, 3.5, z0, z1, 'grate', 2, 'Sky_Ring'); b(1.25, 8.75, 3.2, 3.5, z0, z1, 'grate', 2, 'Sky_Ring');
+      b(z0, z1, 3.2, 3.5, -7.25, -1.25, 'grate', 2, 'Sky_Ring'); b(z0, z1, 3.2, 3.5, 1.25, 7.25, 'grate', 2, 'Sky_Ring'); }
+    rails([[-14.5, -9], [-5, -1.25], [1.25, 5], [9, 14.5]]);
+    crates([[4.5, 6.5, 1.1, 5, 6.5], [-6.5, -4.5, 1.1, -6.5, -5], [-6.8, -5.6, 2, 2, 3.5], [5.6, 6.8, 2, -3.5, -2], [-14.5, -12.5, 1.3, -1, 1], [12.5, 14.5, 1.3, -1, 1],
+      [-23, -21, 1.1, 11, 13], [-22, -20, 2, -14, -12], [17, 18.5, 1.1, 10.5, 12], [21, 23, 1.1, -13, -11], [20, 22, 2, 12, 14],
+      [-8, -6.5, 1.1, 13, 14.5], [6.5, 8, 1.1, -14.5, -13], [-18.5, -17, 1.1, -12, -10.5], [-4, -2.5, 1.2, 12.5, 14], [2.5, 4, 1.2, -14, -12.5]]);
+    return M;
+  }
+  if (arena === 'magma') {
+    // furnace tower (chamfered corners) and an X of diagonal bridges to the platforms, each built from 16 short
+    // segments shifted sideways (walkable stair-step edges); big pipelines on the ground instead of divider walls
+    b(-3, 3, 0, 3.3, -2, 2, 'tower', 3, 'Furnace_Tower'); b(-2, 2, 0, 3.3, 2, 3, 'tower', 3, 'Furnace_Tower'); b(-2, 2, 0, 3.3, -3, -2, 'tower', 3, 'Furnace_Tower');
+    b(-3.15, 3.15, 3.3, 3.5, -3.15, 3.15, 'metal', 4, 'Furnace_Tower'); crown('Tower_Crown', 3.05, true);  // diagonal bridges land at the corners
+    const N = 16, L = (16 - 3.15) / N, k = 9.8 / 12.85;
+    for (const [sx, sz, g] of [[1, 1, 'Bridge_NE'], [-1, 1, 'Bridge_NW'], [1, -1, 'Bridge_SE'], [-1, -1, 'Bridge_SW']])
+      for (let i = 0; i < N; i++) { const za = 3.15 + i * L, zb = za + L, cx = 2.2 + ((za + zb) / 2 - 3.15) * k;
+        b(sx > 0 ? cx - 1.5 : -cx - 1.5, sx > 0 ? cx + 1.5 : -cx + 1.5, 3.2, 3.5, sz > 0 ? za : -zb, sz > 0 ? zb : -za, 'grate', 2, g); }
+    rails([[-14.5, -13.7], [-9.9, 9.9], [13.7, 14.5]]);
+    for (const s of [-1, 1]) {   // horizontal pipelines (chest-high cover) and 4 m vertical risers
+      b(s > 0 ? 9.25 : -10.75, s > 0 ? 10.75 : -9.25, 0, 1.5, 4, 12, 'metal', 2, 'Pipelines'); b(s > 0 ? 9.25 : -10.75, s > 0 ? 10.75 : -9.25, 0, 1.5, -12, -4, 'metal', 2, 'Pipelines'); }
+    for (const [x, z] of [[5, -12.75], [-5, 12.75], [11.5, 10.5], [-11.5, -10.5]]) b(x - .75, x + .75, 0, 4, z - .75, z + .75, 'metal', 2, 'Pipe_Risers');
+    crates([[4.5, 6.5, 1.1, 6, 8], [-6.5, -4.5, 1.1, -8, -6], [-7, -6, 1.2, -1.5, 1.5], [6, 7, 1.2, -1.5, 1.5], [-14.5, -12.5, 1.3, -1, 1], [12.5, 14.5, 1.3, -1, 1],
+      [-23, -21, 1.1, 11, 13], [-22, -20, 2, -14, -12], [17, 18.5, 1.1, 10.5, 12], [21, 23, 1.1, -13, -11], [20, 22, 2, 12, 14],
+      [-8, -7, 1.1, 13, 14], [7, 8, 1.1, -14, -13], [-18.5, -17, 1.1, -12, -10.5], [-3, -1.5, 2, 6.5, 8], [1.5, 3, 2, -8, -6.5]]);
+    return M;
+  }
+  // coastal: round (octagonal) lab tower, cross bridges, and an octagon of planters (palms) around the tower
+  const oct = (r, w, y0, y1, mat) => { const s = r * Math.SQRT1_2;
+    b(-s, s, y0, y1, -s, s, mat, 3, 'Lab_Tower');
+    b(s, r, y0, y1, -w, w, mat, 3, 'Lab_Tower'); b(-r, -s, y0, y1, -w, w, mat, 3, 'Lab_Tower'); b(-w, w, y0, y1, s, r, mat, 3, 'Lab_Tower'); b(-w, w, y0, y1, -r, -s, mat, 3, 'Lab_Tower'); };
+  oct(3, 1.24, 0, 3.3, 'tower'); oct(3.15, 1.3, 3.3, 3.5, 'metal'); crown('Tower_Crown', 2.2);
+  cross();
+  rails([[-14.5, -9], [-5, -1.25], [1.25, 5], [9, 14.5]]);
+  for (let i = 0; i < 8; i++) { const a = Math.PI / 8 + i * Math.PI / 4, x = Math.cos(a) * 6.6, z = Math.sin(a) * 6.6;
+    b(x - .7, x + .7, 0, 1.1, z - .7, z + .7, 'conc', 2, 'Planters'); b(x - .18, x + .18, 1.1, 6.4, z - .18, z + .18, 'dark', 1, 'Palms'); }
+  crates([[-14.5, -12.5, 1.3, -1, 1], [12.5, 14.5, 1.3, -1, 1], [-23, -21, 1.1, 11, 13], [-22, -20, 2, -14, -12], [17, 18.5, 1.1, 10.5, 12], [21, 23, 1.1, -13, -11],
+    [20, 22, 2, 12, 14], [-8, -7, 1.1, 13, 14], [7, 8, 1.1, -14, -13], [-18.5, -17, 1.1, -12, -10.5], [-5, -3.5, 1.2, 12, 13.5], [3.5, 5, 1.2, -13.5, -12],
+    [-13.5, -12, 2, 9, 10.5], [12, 13.5, 2, -10.5, -9]]);
   return M;
 }
 export function buildColliders(map) {

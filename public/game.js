@@ -134,25 +134,41 @@ let MDL={};  // public/models/*.glb, filled in boot(); a missing file stays null
 /** arena*.glb leave flat Sign_1… planes on the side buildings; the game paints the neon text (glTF UVs → flipY off). */
 const ARENA_SIGNS={
   city:{Sign_1:['鷺光電機','HERON ELECTRIC','#2ef2ff'],Sign_2:['霓虹保險','NEON SURETY','#ff2fb4'],Sign_3:['網咖','NET CAFE 24H','#ffb43a'],Sign_4:['雨巷拉麵','RAIN ALLEY RAMEN','#ff2fb4']},
-  underground:{Sign_1:['高壓危險','HIGH VOLTAGE','#ff5a1a'],Sign_2:['反應爐 07','REACTOR 07','#ffb43a'],Sign_3:['冷卻迴路','COOLANT LOOP','#ff2a2a'],Sign_4:['電網核心','GRID CORE','#ffb43a']}};
+  underground:{Sign_1:['高壓危險','HIGH VOLTAGE','#ff5a1a'],Sign_2:['反應爐 07','REACTOR 07','#ffb43a'],Sign_3:['冷卻迴路','COOLANT LOOP','#ff2a2a'],Sign_4:['電網核心','GRID CORE','#ffb43a']},
+  skyfort:{Sign_1:['天穹要塞','SKYFORT','#2ef2ff'],Sign_2:['A 區','SECTOR A','#ff2fb4'],Sign_3:['B 區','SECTOR B','#ff2fb4'],Sign_4:['更高・更快','HIGHER FASTER','#2ef2ff']},
+  magma:{Sign_1:['熔岩工業區','MAGMA WORKS','#ff5a1a'],Sign_2:['鍛造明天','FORGE TOMORROW','#ffb43a'],Sign_3:['高溫危險','HEAT HAZARD','#ff2a2a'],Sign_4:['B2 熔爐','FURNACE B2','#ffb43a']},
+  coastal:{Sign_1:['海岸研究站','COASTAL LAB','#2ef2ff'],Sign_2:['海洋研究','OCEAN RESEARCH','#4ad8ff'],Sign_3:['A 棟實驗室','LAB A','#2ef2ff'],Sign_4:['潔淨海洋','CLEANER OCEAN','#4ad8ff']}};
+/** Per-arena look: fog, ambient (hemisphere), sun, which colour set the point lights use, rain, the relay data core above the
+ * tower (the three newer arenas have a spire there instead), beam colour and a sky gradient [zenith, horizon, below the horizon]. */
+const ARENA_LOOK={
+  city:{fog:0xc9d9ea,fogD:.0075,hemi:[0xd6e8ff,0x6e6655,1.25],sun:[0xfff1dc,2.4],lights:'col',rain:true,core:true,cables:true},
+  underground:{fog:0x140a06,fogD:.012,hemi:[0xffb27a,0x2a120a,.6],sun:[0xff9a5a,1],lights:'uCol',core:true,cables:true},
+  skyfort:{fog:0x9fb6de,fogD:.0036,hemi:[0xc4d6f6,0x4a5878,.95],sun:[0xfff0dc,2.2],lights:'col',beam:[.25,.75,1],sky:[0x1f4fb8,0xb0c8ec,0xdfe7f4]},
+  magma:{fog:0x2a0e06,fogD:.0105,hemi:[0xff9a6a,0x3a0c04,.7],sun:[0xff8a4a,1.4],lights:'uCol',beam:[1,.42,.12],sky:[0x12060a,0x7a240c,0x3a0a04]},
+  coastal:{fog:0xa9cbe4,fogD:.0032,hemi:[0xdcecff,0x7a7262,.85],sun:[0xfff3e0,2.0],lights:'col',beam:[.3,.85,1],sky:[0x2a6fd0,0xc0dcf2,0x1d5f8c]}};
 function arenaSigns(root,table){for(const [name,[t,sub,col]] of Object.entries(table)){const o=root.getObjectByName(name);if(!o||!o.isMesh)continue;
   const tx=signTex(t,sub,col,768,274,140);tx.flipY=false;tx.needsUpdate=true;o.material=signMat(tx,1.3);o.castShadow=false;}}
 
 /* Two looks over the same colliders: 'city' (arena.glb, or the procedural map) and 'underground' (arena_underground.glb).
  * The server picks one per match (net.m.arena), so everyone sees the same arena; a missing model falls back to city. */
-const ARENA_THEMES={city:{map:null,extras:[]},underground:{map:null,extras:[]}};
+const ARENA_THEMES=Object.fromEntries(SH.ARENA_ORDER.map(k=>[k,{map:null,extras:[]}]));
+const ZONE_SHAPE={coastal:'underground'};  // the coastal lab tower has the same octagonal deck as the reactor
+let themeSky=null,landmark=null,cablesG=null;
 let hemi=null;
 /** Move everything added to the scene since index n0 into one group, so a theme can show/hide it. */
 function collectSince(n0){const g=new THREE.Group();for(const o of scene.children.slice(n0)){scene.remove(o);g.add(o);}scene.add(g);return g;}
 function arenaAvailable(name){return !!(ARENA_THEMES[name]&&ARENA_THEMES[name].map);}
 function applyArena(name){if(!arenaAvailable(name))name='city';
   for(const [k,t] of Object.entries(ARENA_THEMES)){const on=k===name;if(t.map)t.map.visible=on;t.extras.forEach(g=>g.visible=on);}
-  const U=name==='underground';if(rain)rain.visible=!U;
-  scene.fog.color.set(U?0x140a06:0xc9d9ea);scene.fog.density=U?.012:.0075;
-  if(hemi){hemi.color.set(U?0xffb27a:0xd6e8ff);hemi.groundColor.set(U?0x2a120a:0x6e6655);hemi.intensity=U?.6:1.25;}
-  if(sun){sun.color.set(U?0xff9a5a:0xfff1dc);sun.intensity=U?1:2.4;}
-  for(const l of lights)l.color.set(U?l.userData.uCol:l.userData.col);
-  showZoneShape(name);}
+  const L=ARENA_LOOK[name]||ARENA_LOOK.city;if(rain)rain.visible=!!L.rain;
+  scene.fog.color.set(L.fog);scene.fog.density=L.fogD;
+  if(hemi){hemi.color.set(L.hemi[0]);hemi.groundColor.set(L.hemi[1]);hemi.intensity=L.hemi[2];}
+  if(sun){sun.color.set(L.sun[0]);sun.intensity=L.sun[1];}
+  for(const l of lights)l.color.set(l.userData[L.lights]);
+  if(themeSky){themeSky.visible=!!L.sky;if(L.sky)L.sky.forEach((c,i)=>themeSky.material.uniforms.uC.value[i].set(c));}
+  if(landmark){landmark.core.visible=!!L.core;landmark.beamMat.uniforms.uCol.value.set(...(L.beam||[.2,.95,1]));}
+  if(cablesG)cablesG.visible=!!L.cables;
+  showZoneShape(ZONE_SHAPE[name]||name);}
 let arenaShown='';const arenaColliders={};
 /** Follow the server's arena: swap the look and the solid boxes used for prediction (they differ between arenas). */
 function syncArena(){const a=(net.m&&net.m.arena)||'city';if(a===arenaShown)return;arenaShown=a;
@@ -186,6 +202,11 @@ function buildWorld(){
   // public/models/arena.glb (when present) only replaces how the map looks
   const MAP=SH.buildMap();colliders=SH.buildColliders(MAP);
   const arena=MDL.arena&&MDL.arena.scene,under=MDL.arena_underground&&MDL.arena_underground.scene;
+  // the newer arenas: arena_<name>.glb, or plain boxes of their layout when the model is missing
+  for(const name of ['skyfort','magma','coastal']){const g=MDL['arena_'+name]&&MDL['arena_'+name].scene;
+    if(g){scene.add(prepare(g));arenaSigns(g,ARENA_SIGNS[name]);ARENA_THEMES[name].map=g;
+      g.traverse(o=>{if(/Backdrop/.test(o.name))o.traverse(m=>{m.castShadow=false;});});}  // far scenery would only shade the arena
+    else{const n0=scene.children.length;for(const m of SH.buildMap(name))box(m[0],m[1],m[2],m[3],m[4],m[5],M[m[6]],{uvs:m[7],shadow:true});ARENA_THEMES[name].map=collectSince(n0);}}
   if(arena){scene.add(prepare(arena));arenaSigns(arena,ARENA_SIGNS.city);ARENA_THEMES.city.map=arena;}
   if(under){scene.add(prepare(under));arenaSigns(under,ARENA_SIGNS.underground);ARENA_THEMES.underground.map=under;
     const ceil=under.getObjectByName('Ceiling_Decor');if(ceil)ceil.traverse(o=>{o.castShadow=false;});}  // the ceiling would shade the whole map from the sun
@@ -252,8 +273,9 @@ function buildWorld(){
   // hanging cables
   const cab=new THREE.MeshStandardMaterial({color:0x07090d,roughness:.6,metalness:.3});
   const cables=[[-19,10,-6,-10,4.3,-11],[-19,10.5,6,-10,4.2,9],[19,10,-7,10,4.3,-10],[19,10.6,7,10,4.2,8],[-24.5,8.5,-18,-17,4.2,-16.5],[24.5,8.6,18,17,4.2,16.5],[-24.5,8.8,20,24.5,8.8,20],[-24.5,8.4,-21,24.5,8.6,-21]];
+  cablesG=new THREE.Group();scene.add(cablesG);
   for(const c of cables){const a=new V3(c[0],c[1],c[2]),b=new V3(c[3],c[4],c[5]);const mid=a.clone().add(b).multiplyScalar(.5);mid.y-=a.distanceTo(b)*.08;
-    const curve=new THREE.QuadraticBezierCurve3(a,mid,b);const m=new THREE.Mesh(new THREE.TubeGeometry(curve,24,.035,5,false),cab);scene.add(m);}
+    const curve=new THREE.QuadraticBezierCurve3(a,mid,b);const m=new THREE.Mesh(new THREE.TubeGeometry(curve,24,.035,5,false),cab);cablesG.add(m);}
 
   // landmark: data core + beam above tower
   const core=new THREE.Group();core.position.set(0,7.6,0);scene.add(core);
@@ -261,11 +283,12 @@ function buildWorld(){
   const ico=new THREE.Mesh(new THREE.IcosahedronGeometry(.62,0),new THREE.MeshStandardMaterial({color:0x0b1830,emissive:CYAN,emissiveIntensity:2.2,metalness:.6,roughness:.2,flatShading:true}));core.add(ico);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(2.3,.025,6,64),neon(CYAN,2.2));ring.rotation.x=Math.PI/2;core.add(ring);
   animated.push({update:(t)=>{oct.rotation.y=t*.35;oct.rotation.x=Math.sin(t*.2)*.3;ico.rotation.y=-t*.6;ico.rotation.z=t*.25;ring.rotation.z=t*.15;core.position.y=7.6+Math.sin(t*.8)*.18;}});
-  const beamMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{uT:{value:0}},
+  const beamMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{uT:{value:0},uCol:{value:new V3(.2,.95,1)}},
     vertexShader:'varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader:'uniform float uT;varying vec2 vU;void main(){float a=(1.-vU.y)*.32;a*=.7+.3*sin(vU.y*40.-uT*3.);float e=1.-abs(vU.x-.5)*2.;gl_FragColor=vec4(vec3(.2,.95,1.)*a*(.4+.6*e),1.);}'});
+    fragmentShader:'uniform float uT;uniform vec3 uCol;varying vec2 vU;void main(){float a=(1.-vU.y)*.32;a*=.7+.3*sin(vU.y*40.-uT*3.);float e=1.-abs(vU.x-.5)*2.;gl_FragColor=vec4(uCol*a*(.4+.6*e),1.);}'});
   const beam=new THREE.Mesh(new THREE.CylinderGeometry(.5,.9,60,24,1,true),beamMat);beam.position.set(0,33.5,0);scene.add(beam);
   animated.push({update:(t)=>{beamMat.uniforms.uT.value=t;}});
+  landmark={core,beamMat};
 
   // lights
   addLight(CYAN,2.6,16,0,5.4,0,true);
@@ -278,6 +301,12 @@ function buildWorld(){
   scene.add(sun);scene.add(sun.target);
 
   nCity=scene.children.length;buildSkyline();ARENA_THEMES.city.extras.push(collectSince(nCity));
+  // sky gradient for the open-air arenas (colours set per arena in applyArena)
+  themeSky=new THREE.Mesh(new THREE.SphereGeometry(330,48,24),new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,fog:false,
+    uniforms:{uC:{value:[new THREE.Color(),new THREE.Color(),new THREE.Color()]}},
+    vertexShader:'varying vec3 p;void main(){p=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader:'uniform vec3 uC[3];varying vec3 p;void main(){vec3 d=normalize(p);float h=d.y;vec3 c=h>0.?mix(uC[1],uC[0],smoothstep(0.,.6,h)):mix(uC[1],uC[2],smoothstep(0.,.12,-h));vec3 sd=normalize(vec3(-.55,.62,.35));float s=max(dot(d,sd),0.);c+=vec3(1.,.93,.8)*(pow(s,600.)*3.+pow(s,10.)*.18);gl_FragColor=vec4(c,1.);}'}));
+  themeSky.visible=false;scene.add(themeSky);
   applyArena('city');
 }
 
@@ -717,9 +746,9 @@ function buildPickupsFX(){
   const s=3.15*Math.SQRT1_2-.05,r=3.1,w=1.25,deck=[[r,-w],[r,w],[s,w],[s,s],[w,s],[w,r],[-w,r],[-w,s],[-s,s],[-s,w],[-r,w],[-r,-w],[-s,-w],[-s,-s],[-w,-s],[-w,-r],[w,-r],[w,-s],[s,-s],[s,-w]];
   const shapes={city:zoneShape([[-half,-half],[half,-half],[half,half],[-half,half]],4,Math.PI/4),underground:zoneShape(deck,8,Math.PI/8)};
   zg.visible=false;PK.zone={g:zg,zmat,fmat,col:{material:cmat},shapes};
-  showZoneShape(arenaShown||'city');
+  showZoneShape(ZONE_SHAPE[arenaShown]||arenaShown||'city');
 }
-function showZoneShape(name){if(!PK.zone)return;for(const [k,g] of Object.entries(PK.zone.shapes))g.visible=k===(PK.zone.shapes[name]?name:'city');}
+function showZoneShape(name){if(!PK.zone)return;const want=PK.zone.shapes[name]||PK.zone.shapes.city;for(const g of Object.values(PK.zone.shapes))g.visible=g===want;}
 function updatePickupsFX(t){
   PK.items.forEach((it,i)=>{const on=!!net.pk[i];it.core.visible=on;it.ring.material=neon(on?(SH.PICKUPS[i].type==='shield'?CYAN:AMB):0x55606e,on?2.4:1);
     if(on){it.core.rotation.y=t*1.6;it.core.position.y=it.baseY+Math.sin(t*2+i)*.1;}});
