@@ -682,6 +682,11 @@ function goFull(){if(!touch.on)return;const d=document.documentElement;try{const
   if(p&&p.then)p.then(()=>{try{const q=screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape');if(q&&q.catch)q.catch(()=>{});}catch(e){}}).catch(()=>{});}catch(e){}}
 function setupTouch(){
   addEventListener('touchstart',()=>enableTouch(),{once:true,passive:true});
+  // 手機長按 / 連點會觸發文字選取、全選或系統選單：輸入框以外一律擋掉，觸控層的 touchstart 也取消預設（pointerdown 擋不住 iOS 長按選取）
+  const editable=e=>e.target.closest&&e.target.closest('input,textarea,[contenteditable]');
+  for(const ev of ['selectstart','contextmenu','dragstart'])document.addEventListener(ev,e=>{if(!editable(e))e.preventDefault();});
+  $('#touch').addEventListener('touchstart',e=>{if(e.cancelable)e.preventDefault();},{passive:false});
+  document.addEventListener('touchend',()=>{if(inMatch()){const s=getSelection();if(s&&s.rangeCount)s.removeAllRanges();}},{passive:true});
   const L=$('#tzone-l'),stick=$('#stick'),knob=stick.firstElementChild;
   L.addEventListener('pointerdown',e=>{if(touch.stickId!==null)return;e.preventDefault();touch.stickId=e.pointerId;touch.ox=e.clientX;touch.oy=e.clientY;
     stick.style.left=e.clientX+'px';stick.style.top=e.clientY+'px';stick.classList.add('on');try{L.setPointerCapture(e.pointerId);}catch(err){}});

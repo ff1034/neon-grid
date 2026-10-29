@@ -24,7 +24,8 @@
 :root{ box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
 *,*::before,*::after{ box-sizing:inherit; }
 html{ scroll-padding-top:env(safe-area-inset-top,0px); height:100%; }
-body{ height:100%; margin:0; background:var(--ink); color:var(--text); font-family:var(--body); overflow:hidden; -webkit-font-smoothing:antialiased; user-select:none; }
+body{ height:100%; margin:0; background:var(--ink); color:var(--text); font-family:var(--body); overflow:hidden; -webkit-font-smoothing:antialiased; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
+input, textarea{ user-select:text; -webkit-user-select:text; -webkit-touch-callout:default; }
 #game{ position:fixed; inset:0; }
 #game canvas{ display:block; width:100%; height:100%; }
 body.playing #game canvas{ cursor:none; }
