@@ -1,6 +1,6 @@
 // NEON GRID shared rules: used by the browser client and by the Cloudflare Durable Object server.
 // Keep this file free of DOM / THREE dependencies so both sides simulate identically.
-export const VERSION = 5;
+export const VERSION = 6;
 export const MAX_PLAYERS = 8;
 export const MAX_QUEUE = 64;
 export const TICK = 1 / 60;
@@ -30,11 +30,25 @@ export const PICKUPS = [
 export const QUICK_CHAT = ['好槍法！', '再來一場？', '等我一下', '跟我來', '小心後面', '哈哈哈'];
 export const BOT_NAMES = ['霓影', 'K-ROW', '雨刃', 'VEX-9', '幽頻', 'NULLA', '赤弦', '鈦鴉'];
 export const DIFF = { easy: { react: .75, err: .085, turn: 3.6, fireAng: .09, track: 1.8 }, normal: { react: .45, err: .05, turn: 5.2, fireAng: .06, track: 1.2 }, hard: { react: .25, err: .026, turn: 8, fireAng: .04, track: .8 } };
+// falloff：距離 near 以內全額傷害，到 far 線性降到 min 倍，再遠維持 min 倍（沒有 falloff 的武器遠近一樣）。
+// 電弧的 8 束是固定圖形（內圈 3、外圈 5），距離越遠散得越開、打中的束數自然變少，每束傷害也同時遞減。
 export const WEAPONS = [
-  { id: 'pulse', name: '脈衝步槍', short: '脈衝', dmg: 20, rate: 6, mag: 24, reload: 1.6, range: 90, pellets: 0, spreadDeg: 0, color: 0x2ef2ff },
-  { id: 'arc', name: '電弧散射器', short: '電弧', dmg: 8, rate: 1, mag: 6, reload: 2.0, range: 22, pellets: 6, spreadDeg: 2.6, color: 0xff2fb4 },
-  { id: 'rail', name: '軌道狙擊槍', short: '軌道', dmg: 70, rate: .8, mag: 4, reload: 2.4, range: 120, pellets: 0, spreadDeg: 0, color: 0xffb43a }];
-export const PATTERN = []; for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; PATTERN.push([Math.cos(a), Math.sin(a)]); }
+  { id: 'pulse', name: '脈衝步槍', short: '脈衝', dmg: 20, rate: 6, mag: 24, reload: 1.6, range: 90, pellets: 0, spreadDeg: 0, color: 0x2ef2ff,
+    falloff: { near: 15, far: 60, min: .5 }, desc: '中距離主力，越遠傷害越低（15 公尺外遞減，60 公尺剩一半）' },
+  { id: 'arc', name: '電弧散射器', short: '電弧', dmg: 11, rate: 1, mag: 6, reload: 2.0, range: 22, pellets: 8, spreadDeg: 3.4, color: 0xff2fb4,
+    falloff: { near: 4, far: 18, min: .25 }, desc: '近距離爆發，8 束每束 11；越遠命中束數與每束傷害都下降' },
+  { id: 'rail', name: '軌道狙擊槍', short: '軌道', dmg: 90, rate: .7, mag: 3, reload: 3.2, range: 120, pellets: 0, spreadDeg: 0, color: 0xffb43a,
+    desc: '單發 90、遠近傷害不變，但彈匣只有 3 發、換彈 3.2 秒' }];
+export const PATTERN = [];
+for (let i = 0; i < 3; i++) { const a = Math.PI / 2 + i * 2 * Math.PI / 3; PATTERN.push([.42 * Math.cos(a), .42 * Math.sin(a)]); }
+for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; PATTERN.push([Math.cos(a), Math.sin(a)]); }
+/** 一發（或一束）在距離 t 公尺的傷害。 */
+export function dmgAt(w, t) {
+  const f = w.falloff;
+  if (!f || t <= f.near) return w.dmg;
+  const k = t >= f.far ? f.min : 1 - (1 - f.min) * (t - f.near) / (f.far - f.near);
+  return Math.round(w.dmg * k * 10) / 10;
+}
 export const PLAYER_COLORS = [0x2ef2ff, 0xff3fb8, 0xffb43a, 0x8cff5a, 0xa77bff, 0xff6a3d, 0x9fd8ff, 0xff4a5a];
 export const SPAWNS = [[-13, 0, -6], [13, 0, 6], [-22, 0, -15.6], [22, 0, 15.6], [0, 3.5, 20], [0, 3.5, -20], [-12, 3.5, 20], [12, 3.5, -20], [0, 0, 10], [0, 0, -10], [-8, 0, 21], [8, 0, -21]];
 export const NODES = [[0, 0, 10], [0, 0, -10], [-8, 0, 0], [8, 0, 0], [-8, 0, 10], [8, 0, 10], [-8, 0, -10], [8, 0, -10], [-12, 0, -3], [12, 0, 3], [-12, 0, 3], [12, 0, -3],

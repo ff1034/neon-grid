@@ -15,7 +15,7 @@ export class GameCore {
     }, opts);
     this.layouts = {};  // arena -> { C, nav }, built on first use
     this.conns = new Map(); this.queue = []; this.bots = []; this.nextId = 1;
-    this.match = { state: 'waiting', t: 0, id: 0, tick: 0, mode: this.o.modes[0], arena: this.o.arenas[0] };
+    this.match = { state: 'waiting', t: 0, id: 0, tick: 0, mode: this.o.modes[0], arena: this.o.arenas[Math.floor(Math.random() * this.o.arenas.length)] };
     this.useArena(this.match.arena);
     this.spawnState = SH.SPAWNS.map(() => ({ uses: 0, last: -99 }));
     this.pickups = SH.PICKUPS.map(p => Object.assign({ on: true, at: 0 }, p));
@@ -144,7 +144,7 @@ export class GameCore {
       const r = SH.traceShot(this.C, ghosts, null, o, d, w.range), hit = r.hit ? r.hit.ref : null;
       const e = [SH.r3(o.x + d.x * r.t), SH.r3(o.y + d.y * r.t), SH.r3(o.z + d.z * r.t), hit ? hit.id : 0];
       if (r.n) e.push(r.n.x, r.n.y, r.n.z);
-      ends.push(e); if (hit) dmg.set(hit, (dmg.get(hit) || 0) + w.dmg);
+      ends.push(e); if (hit) dmg.set(hit, (dmg.get(hit) || 0) + SH.dmgAt(w, r.t));
     }
     a.shots++; if (dmg.size) a.hits++;
     this.events.push({ k: 'sh', a: a.id, w: a.wi, e: ends });
@@ -166,14 +166,19 @@ export class GameCore {
   }
   spawn(p) { const i = SH.pickSpawn(this.C, p, this.players(), this.spawnState, this.clock()); SH.placeAt(p, i, this.spawnState, this.clock()); this.events.push({ k: 'sp', id: p.id }); }
 
+  pickArena() {
+    const A = this.o.arenas, rest = A.length > 1 ? A.filter(a => a !== this.match.arena) : A;
+    return rest[Math.floor(Math.random() * rest.length)];
+  }
   /** Arenas have different solid boxes: swap colliders + bot nav graph. */
   useArena(a) {
     if (!this.layouts[a]) { const C = SH.buildColliders(SH.buildMap(a)); this.layouts[a] = { C, nav: buildNav(C, a) }; }
     this.C = this.layouts[a].C; this.nav = this.layouts[a].nav;
   }
   startCountdown() { this.match.state = 'countdown'; this.match.t = this.o.countdown; this.match.mode = this.o.modes[this.match.id % this.o.modes.length];
-    // arena advances once per full round of modes, so every mode is played in every arena
-    const arena = this.o.arenas[Math.floor(this.match.id / this.o.modes.length) % this.o.arenas.length];
+    // every match draws a random arena, never the same one twice in a row; a restarted countdown for the same match keeps its draw
+    if (this.arenaFor !== this.match.id) { this.arenaFor = this.match.id; this.nextArena = this.match.id ? this.pickArena() : this.match.arena; }
+    const arena = this.nextArena;
     if (arena !== this.match.arena) {
       this.match.arena = arena; this.useArena(arena);
       // the new layout may put a crate where someone is standing: move everyone to a spawn point of the new map

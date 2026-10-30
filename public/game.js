@@ -10,7 +10,7 @@ const angWrap=a=>{while(a>Math.PI)a-=2*Math.PI;while(a<-Math.PI)a+=2*Math.PI;ret
 const $=s=>document.querySelector(s);
 
 /* ============ Settings (settings.json equivalent) ============ */
-const DEF={ver:1,mode:'ffa',kothLimit:60,assist:true,autofire:false,music:.45,sfx:.8,ui:.7,sens:1,touchSens:1,fov:80,invertY:false,quality:'high',uiScale:1,bloom:true,shake:true,hitFlash:true,stats:true,
+const DEF={ver:1,mode:'ffa',arena:'random',kothLimit:60,assist:true,autofire:false,music:.45,sfx:.8,ui:.7,sens:1,touchSens:1,fov:80,invertY:false,quality:'high',uiScale:1,bloom:true,shake:true,hitFlash:true,stats:true,
   name:'代理人',bots:5,diff:'normal',time:5,scoreLimit:20};
 let S=Object.assign({},DEF);let hadSaved=false;
 try{const raw=localStorage.getItem('neongrid.settings');if(raw){const o=JSON.parse(raw);if(o&&o.ver===1){S=Object.assign({},DEF,o);hadSaved=true;}}}catch(e){}
@@ -894,11 +894,11 @@ function bindUI(){
     bindRange('s-sens','sens',v=>v.toFixed(2)),bindRange('s-tsens','touchSens',v=>v.toFixed(2)),bindRange('s-fov','fov',v=>v+'°',applyQuality),bindRange('s-uiscale','uiScale',pct,applyQuality),bindRange('in-bots','bots',v=>String(v)));
   const modeRows=()=>{$('#row-score').classList.toggle('hidden',S.mode!=='ffa');$('#row-kscore').classList.toggle('hidden',S.mode!=='koth');};
   const segU=[bindSeg('s-quality','quality',v=>v,applyQuality),bindSeg('seg-diff','diff',v=>v),bindSeg('seg-time','time',v=>+v),bindSeg('seg-score','scoreLimit',v=>+v),
-    bindSeg('seg-kscore','kothLimit',v=>+v),bindSeg('seg-mode','mode',v=>v,modeRows)];modeRows();
+    bindSeg('seg-kscore','kothLimit',v=>+v),bindSeg('seg-mode','mode',v=>v,modeRows),bindSeg('seg-arena','arena',v=>v)];modeRows();
   const tg=[bindTgl('s-invert','invertY'),bindTgl('s-bloom','bloom',applyQuality),bindTgl('s-shake','shake'),bindTgl('s-flash','hitFlash'),bindTgl('s-stats','stats'),bindTgl('s-assist','assist'),bindTgl('s-autofire','autofire')];
   const nm=$('#in-name'),on=$('#on-name');nm.value=on.value=S.name;
   nm.addEventListener('input',()=>{S.name=nm.value.slice(0,16);on.value=nm.value;saveSettings();});on.addEventListener('input',()=>{S.name=on.value.slice(0,16);nm.value=on.value;saveSettings();});
-  $('#s-reset').addEventListener('click',()=>{const keep={name:S.name,bots:S.bots,diff:S.diff,time:S.time,scoreLimit:S.scoreLimit,kothLimit:S.kothLimit,mode:S.mode};S=Object.assign({},DEF,keep);saveSettings();
+  $('#s-reset').addEventListener('click',()=>{const keep={name:S.name,bots:S.bots,diff:S.diff,time:S.time,scoreLimit:S.scoreLimit,kothLimit:S.kothLimit,mode:S.mode,arena:S.arena};S=Object.assign({},DEF,keep);saveSettings();
     for(const b of binders){b.el.value=S[b.key];b.upd();}segU.forEach(f=>f());tg.forEach(f=>f());modeRows();applyQuality();applyVolumes();sfx('ui');});
   document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g){audioInit();sfx('ui');openOverlay(g.dataset.go);return;}if(e.target.closest('[data-back]')){goBack();}});
   document.querySelectorAll('.navbtn').forEach(b=>b.addEventListener('mouseenter',()=>sfx('uih')));
@@ -941,13 +941,13 @@ let me=null;
 const _old=new V3();
 function netSend(o){if(net.kind==='ws')lobbySend(o);else if(net.core&&net.conn)net.core.message(net.conn,JSON.stringify(o));}
 function lobbySend(o){if(lobby.ws&&lobby.ws.readyState===1)lobby.ws.send(JSON.stringify(o));}
-let soloRuns=0;
+const soloArena=()=>SH.ARENAS[S.arena]?S.arena:SH.ARENA_ORDER[Math.floor(Math.random()*SH.ARENA_ORDER.length)];
 function startLocal(kind){
   net.core=null;net.conn=null;net.vclock=0;net.coreAcc=0;
   const now=()=>net.vclock;
   const opts=kind==='attract'?{attract:true,fillTo:6,idleTimeout:Infinity,queue:false,now}
     :{maxPlayers:1+S.bots,fillTo:1+S.bots,diff:S.diff,time:S.time*60,scores:{ffa:S.scoreLimit,koth:S.kothLimit},modes:[S.mode],queue:false,idleTimeout:Infinity,oneShot:true,countdown:3.5,now,
-      arenas:[SH.ARENA_ORDER[soloRuns++%SH.ARENA_ORDER.length]]};  // solo is a single match, so rotate the arena per practice run
+      arenas:[soloArena()]};  // solo is a single match on the map the player picked (or a random one)
   const core=new GameCore(opts),inbox=[];
   net.core=core;net.inbox=inbox;net.kind=kind==='attract'?'attract':'local';
   net.conn=core.connect({send:s=>inbox.push(s),close(){}},kind==='attract');
